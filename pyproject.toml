@@ -1,0 +1,36 @@
+[tool.poetry]
+name = "pycissa"
+version = "0.1.1"
+description = "A Python implementation of the Circulant singular spectrum analysis (CiSSA) algorithm (https://github.com/jbogalo/CiSSA)"
+authors = ["Luke Fullard <lukeafullard@gmail.com>"]
+readme = "README.md"
+license = "CC0-1.0"
+homepage = "https://github.com/LukeAFullard/pyCiSSA"
+repository = "https://github.com/LukeAFullard/pyCiSSA"
+keywords = ["CiSSA", "SSA", "time-series", "signal-processing", "denoising", "detrending"]
+classifiers = [
+    "License :: Public Domain",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent"
+]
+
+
+
+
+
+[tool.poetry.dependencies]
+python = "^3.10"
+numpy = ">1.26.2"
+statsmodels = "^0.14.1"
+scipy = "^1.11.4"
+matplotlib = "^3.8.2"
+requests = "^2.31.0"
+python-dateutil = "^2.8.2"
+piecewise-regression = "^1.5.0"
+nolds = "^0.6.0"
+scikit-learn = "^1.5.1"
+astropy = ">6.1.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,146 @@
+/* General styling with animation */
+body {
+    background: linear-gradient(135deg, #4A90E2, #50E3C2);
+    color: #1A237E;
+    font-family: 'Poppins', sans-serif; /* Modern font */
+    margin: 0;
+    padding: 20px;
+    overflow-x: hidden;
+    animation: fadeIn 1s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Animated container with glass effect */
+.stApp {
+    max-width: 1200px;
+    margin: 0 auto;
+    background: rgba(255, 255, 255, 0.85);
+    border-radius: 20px;
+    padding: 30px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+    backdrop-filter: blur(5px); /* Glass effect */
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    transform: perspective(1000px) rotateX(5deg);
+    transition: transform 0.3s;
+}
+
+.stApp:hover {
+    transform: perspective(1000px) rotateX(0deg);
+}
+
+/* Header with glowing effect */
+header {
+    text-align: center;
+    padding: 30px;
+    background: linear-gradient(90deg, #4A90E2, #50E3C2);
+    border-radius: 15px;
+    box-shadow: 0 0 15px rgba(74, 144, 226, 0.5);
+}
+
+header h1 {
+    color: white;
+    font-size: 3em;
+    text-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+    margin: 0;
+    animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+    from { text-shadow: 0 0 5px rgba(255, 255, 255, 0.7); }
+    to { text-shadow: 0 0 20px rgba(255, 255, 255, 1); }
+}
+
+/* Stylish buttons with ripple effect */
+.stButton > button {
+    background: #4A90E2;
+    color: white;
+    border: none;
+    padding: 12px 25px;
+    border-radius: 50px;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    transition: background 0.3s, transform 0.2s;
+}
+
+.stButton > button:hover {
+    background: #357ABD;
+    transform: scale(1.05);
+}
+
+.stButton > button::after {
+    content: '';
+    position: absolute;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    width: 0;
+    height: 0;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
+}
+
+.stButton > button:active::after {
+    width: 200px;
+    height: 200px;
+}
+
+/* Input with animated border */
+.stTextInput > div > input {
+    border-radius: 25px;
+    border: 2px solid transparent;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.7);
+    transition: border-color 0.3s;
+}
+
+.stTextInput > div > input:focus {
+    border-color: #50E3C2;
+    outline: none;
+    box-shadow: 0 0 10px rgba(80, 227, 194, 0.5);
+}
+
+/* Graph styling with hover animation */
+.stGraph {
+    border: 2px solid #50E3C2;
+    border-radius: 15px;
+    padding: 15px;
+    background: rgba(255, 255, 255, 0.9);
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.stGraph:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+}
+
+/* Footer with subtle wave */
+footer {
+    text-align: center;
+    padding: 15px;
+    color: #1A237E;
+    font-size: 0.9em;
+    position: relative;
+    overflow: hidden;
+}
+
+footer::after {
+    content: '';
+    position: absolute;
+    bottom: -10px;
+    left: 0;
+    width: 100%;
+    height: 20px;
+    background: url('data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 320"%3E%3Cpath fill="%234A90E2" fill-opacity="0.3" d="M0,128L48,138.7C96,149,192,171,288,176C384,181,480,171,576,149.3C672,128,768,96,864,85.3C960,75,1056,85,1152,90.7C1248,96,1344,96,1392,96L1440,96V320H1392C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320H0Z"%3E%3C/path%3E%3C/svg%3E');
+    animation: wave 7s infinite linear;
+}
+
+@keyframes wave {
+    0% { transform: translateX(0); }
+    100% { transform: translateX(-100%); }
+}
