@@ -165,7 +165,9 @@ class Cissa:
             extension_type: str = 'AR_LR',
             multi_thread_run: bool = True,
             num_workers: int = 2,
-            generate_toeplitz_matrix: bool = False):
+            generate_toeplitz_matrix: bool = False,
+            extend_left: bool = True,
+            extend_right: bool = True):
         '''
         Function to fit CiSSA to a timeseries.
         -------------------------------------------------------------------------
@@ -225,7 +227,9 @@ class Cissa:
                                       extension_type=extension_type,
                                       multi_thread_run=multi_thread_run,
                                       num_workers=num_workers,
-                                      generate_toeplitz_matrix=generate_toeplitz_matrix)
+                                      generate_toeplitz_matrix=generate_toeplitz_matrix,
+                                      extend_left=extend_left,
+                                      extend_right=extend_right)
 
         #generate initial results dictionary
         from pycissa.utilities.generate_cissa_result_dictionary import generate_results_dictionary
