@@ -593,7 +593,9 @@ def perform_reconstruction(U: np.ndarray,
                            T: int,
                            L: int,
                            extension_type: str,
-                           multi_thread_run: bool = True
+                           multi_thread_run: bool = True,
+                           extend_left: bool = True,
+                           extend_right: bool = True
                                ) -> np.ndarray:
     '''
     Function to perform matrix reconstruction (see 4th CiSSA step https://arxiv.org/pdf/2102.01742)
@@ -628,8 +630,11 @@ def perform_reconstruction(U: np.ndarray,
 
 
     left_ext,right_ext = define_left_and_right_extension_lengths(extension_type,T,L)
+    actual_left_ext = left_ext if extend_left else 0
+    actual_right_ext = right_ext if extend_right else 0
+
     # Elementary reconstructed series
-    R = np.zeros((T+(right_ext+left_ext),L))
+    R = np.zeros((T+(actual_right_ext+actual_left_ext),L))
     for k in range(0,L):
         if multi_thread_run:
             R[:,[k]] = diagonal_average(np.matmul(U[:,[k]],W[[k],:]))
@@ -644,7 +649,9 @@ def perform_vectorized_reconstruction(U: np.ndarray,
                            L: int,
                            extension_type: str,
                            multi_thread_run: bool = True,
-                           num_workers: int = 2
+                           num_workers: int = 2,
+                           extend_left: bool = True,
+                           extend_right: bool = True
                           ) -> np.ndarray:
     '''
     Vectorized Function to perform matrix reconstruction (see 4th CiSSA step https://arxiv.org/pdf/2102.01742)
@@ -674,7 +681,11 @@ def perform_vectorized_reconstruction(U: np.ndarray,
     '''
 
     left_ext, right_ext = define_left_and_right_extension_lengths(extension_type, T, L)
-    R = np.zeros((T + left_ext + right_ext, L), dtype=U.dtype)
+
+    actual_left_ext = left_ext if extend_left else 0
+    actual_right_ext = right_ext if extend_right else 0
+
+    R = np.zeros((T + actual_left_ext + actual_right_ext, L), dtype=U.dtype)
 
     # local helper: compute the k-th reconstructed series
     def _compute_k(k: int) -> np.ndarray:
@@ -707,7 +718,9 @@ def perform_vectorized_reconstruction(U: np.ndarray,
 def group_paired_frequencies(R: np.ndarray,
                              L: int,
                              T: int,
-                             extension_type: str
+                             extension_type: str,
+                             extend_left: bool = True,
+                             extend_right: bool = True
                              ) -> np.ndarray:
     '''
     Function to group paired frequencies. (see 3rd CiSSA step https://arxiv.org/pdf/2102.01742)
@@ -731,8 +744,12 @@ def group_paired_frequencies(R: np.ndarray,
     '''
 
     left_ext, right_ext   = define_left_and_right_extension_lengths(extension_type,T,L)
+
+    actual_left_ext = left_ext if extend_left else 0
+    actual_right_ext = right_ext if extend_right else 0
+
     nf2,nft = calculate_number_of_frequencies(L)
-    Z = np.zeros((T+(right_ext+left_ext),int(nft)))
+    Z = np.zeros((T+(actual_left_ext+actual_right_ext),int(nft)))
     Z[:,[0]] = R[:,[0]]
     for k in range(1,int(nf2)+1):
         Z[:,[k]] = R[:,[k]]+R[:,[L+2-(k+1)-1]];
@@ -741,7 +758,11 @@ def group_paired_frequencies(R: np.ndarray,
         Z[:,int(nft-1)] = R[:,int(nft-1)]
 
     lcol,lrow = Z.shape
-    Z = Z[left_ext:lcol-right_ext,:]
+    end_idx = lcol - actual_right_ext
+    if end_idx == lcol:
+        end_idx = None
+
+    Z = Z[actual_left_ext:end_idx,:]
     return Z
 ###############################################################################
 ###############################################################################
@@ -815,7 +836,9 @@ def run_cissa(x: np.ndarray,
               extension_type: str = 'AR_LR',
               multi_thread_run: bool = True,
               num_workers: int = 2,
-              generate_toeplitz_matrix: bool = False
+              generate_toeplitz_matrix: bool = False,
+              extend_left: bool = True,
+              extend_right: bool = True
               ) -> tuple[np.ndarray,np.ndarray]:
     '''
     Function to fit CiSSA to a timeseries.
@@ -863,7 +886,7 @@ def run_cissa(x: np.ndarray,
     #2. Extend series
     from pycissa.utilities.extendseries import extend_series
     left_ext,right_ext = define_left_and_right_extension_lengths(extension_type,T,L)
-    x_e = extend_series(x,extension_type,left_ext,right_ext)
+    x_e = extend_series(x,extension_type,left_ext,right_ext, extend_left=extend_left, extend_right=extend_right)
 
     #3. Calcvulate trajectory matrix
     X = create_trajactory_matrix(x_e,L)
@@ -887,12 +910,12 @@ def run_cissa(x: np.ndarray,
 
     #8.  Perform reconstruction
     # R = perform_reconstruction(U,W,T,L,extension_type,multi_thread_run = multi_thread_run)
-    R = perform_vectorized_reconstruction(U,W,T,L,extension_type,multi_thread_run = multi_thread_run, num_workers=num_workers)
+    R = perform_vectorized_reconstruction(U,W,T,L,extension_type,multi_thread_run = multi_thread_run, num_workers=num_workers, extend_left=extend_left, extend_right=extend_right)
 
     del U, W
 
     #9. Group paired frequencies
-    Z = group_paired_frequencies(R,L,T,extension_type)
+    Z = group_paired_frequencies(R,L,T,extension_type, extend_left=extend_left, extend_right=extend_right)
 
     #10 generate results dictionary
 

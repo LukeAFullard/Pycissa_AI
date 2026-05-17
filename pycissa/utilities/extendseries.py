@@ -3,7 +3,9 @@ import numpy as np
 def extend_series(x: np.ndarray,
                   extension_type: str,
                   left_ext: int,
-                  right_ext: int) -> np.ndarray:
+                  right_ext: int,
+                  extend_left: bool = True,
+                  extend_right: bool = True) -> np.ndarray:
     '''
     Extends time series to perform Singular Spectrum Analysis.  https://doi.org/10.1016/j.sigpro.2020.107824
     This function extends the time series at the beginning and end.
@@ -32,6 +34,10 @@ def extend_series(x: np.ndarray,
         DESCRIPTION: length of left time series extension
     right_ext: int
         DESCRIPTION: length of right time series extension
+    extend_left: bool
+        DESCRIPTION: Whether to actually apply the left extension logic
+    extend_right: bool
+        DESCRIPTION: Whether to actually apply the right extension logic
 
     Returns
     -------
@@ -73,7 +79,9 @@ def extend_series(x: np.ndarray,
         xe = x.copy()
 
     elif extension_type == 'Mirror':  #Mirroring
-        xe = np.append(np.append(np.flipud(x),x),np.flipud(x))
+        left_part = np.flipud(x) if extend_left else np.empty((0, 1))
+        right_part = np.flipud(x) if extend_right else np.empty((0, 1))
+        xe = np.append(np.append(left_part, x), right_part)
         xe = xe.reshape(len(xe),1)
 
     elif extension_type == 'AR_LR':         #Autoregressive extension
@@ -83,18 +91,20 @@ def extend_series(x: np.ndarray,
         Aold, cccold = sm.regression.yule_walker(dx, order=int(p),method="adjusted")
         [A, var, reflec] = aryule(dx, int(p))
         # Right extension
-        y = x.copy()
-        dy = np.diff(y, axis = 0)
-        er = lfilter(np.append(1,A), 1, [x[0] for x in dy])
+        y = x.copy().reshape(-1)
+        if extend_right:
+            dy = np.diff(y, axis = 0)
+            er = lfilter(np.append(1,A), 1, dy)
 
-        dy = lfilter([1],np.append(1,A),np.append(er,np.zeros((right_ext,1))))
-        y = y[0]+np.append(0,np.cumsum(dy))
+            dy = lfilter([1],np.append(1,A),np.append(er,np.zeros(right_ext)))
+            y = y[0]+np.append(0,np.cumsum(dy))
         # Left extension
         y = np.flipud(y)
-        dy = np.diff(y, axis = 0)
-        er = lfilter(np.append(1,A), 1, dy)
-        dy = lfilter([1],np.append(1,A),np.append(er,np.zeros((left_ext,1))))
-        y = y[0]+np.append(0,np.cumsum(dy))
+        if extend_left:
+            dy = np.diff(y, axis = 0)
+            er = lfilter(np.append(1,A), 1, dy)
+            dy = lfilter([1],np.append(1,A),np.append(er,np.zeros(left_ext)))
+            y = y[0]+np.append(0,np.cumsum(dy))
         # Extended series
         xe = np.flipud(y)
         xe = xe.reshape(len(xe),1)
@@ -105,20 +115,21 @@ def extend_series(x: np.ndarray,
         dx = np.diff(x, axis = 0)
         Aold, cccold = sm.regression.yule_walker(dx, order=int(p),method="adjusted")
         [A, var, reflec] = aryule(dx, int(p))
-        # Right extension
-        y = x.copy()
+        # Right extension (None basically here, just process the left extension step)
+        y = x.copy().reshape(-1)
         dy = np.diff(y, axis = 0)
-        er = lfilter(np.append(1,A), 1, [x[0] for x in dy])
+        er = lfilter(np.append(1,A), 1, dy)
 
-        dy = lfilter([1],np.append(1,A),np.append(er,np.zeros((0,1))))
+        dy = lfilter([1],np.append(1,A),np.append(er,np.zeros(0)))
         y = y[0]+np.append(0,np.cumsum(dy))
 
         # Left extension
         y = np.flipud(y)
-        dy = np.diff(y, axis = 0)
-        er = lfilter(np.append(1,A), 1, dy)
-        dy = lfilter([1],np.append(1,A),np.append(er,np.zeros((left_ext,1))))
-        y = y[0]+np.append(0,np.cumsum(dy))
+        if extend_left:
+            dy = np.diff(y, axis = 0)
+            er = lfilter(np.append(1,A), 1, dy)
+            dy = lfilter([1],np.append(1,A),np.append(er,np.zeros(left_ext)))
+            y = y[0]+np.append(0,np.cumsum(dy))
         # Extended series
         xe = np.flipud(y)
         xe = xe.reshape(len(xe),1)
@@ -130,12 +141,13 @@ def extend_series(x: np.ndarray,
         Aold, cccold = sm.regression.yule_walker(dx, order=int(p),method="adjusted")
         [A, var, reflec] = aryule(dx, int(p))
         # Right extension
-        y = x.copy()
-        dy = np.diff(y, axis = 0)
-        er = lfilter(np.append(1,A), 1, [x[0] for x in dy])
+        y = x.copy().reshape(-1)
+        if extend_right:
+            dy = np.diff(y, axis = 0)
+            er = lfilter(np.append(1,A), 1, dy)
 
-        dy = lfilter([1],np.append(1,A),np.append(er,np.zeros((right_ext,1))))
-        y = y[0]+np.append(0,np.cumsum(dy))
+            dy = lfilter([1],np.append(1,A),np.append(er,np.zeros(right_ext)))
+            y = y[0]+np.append(0,np.cumsum(dy))
 
         # # Extended series
         xe = y.copy()
