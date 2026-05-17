@@ -77,7 +77,7 @@ def generate_ar1_evenly(x:    np.ndarray,
     ###########################################################################
     #fit AR1 parameters
     ar1_mod = ARIMA(x_copy, order = (1,0,0), missing ='drop',trend ='ct').fit()
-    rho = ar1_mod.params[2]
+    rho = ar1_mod.arparams[0]
     if rho > 1.:
         print('Warning: rho > 1; setting to 1-eps^0.25')
         eps = np.spacing(1.0)
@@ -88,6 +88,10 @@ def generate_ar1_evenly(x:    np.ndarray,
     ###########################################################################
     #generate AR1 sample
     x_synthetic = arma_generate_sample(np.array([1,-rho]), np.array([1,0]), nsample=series_length, scale=ar1_scale, burnin=100)
+
+    # standardize the generated AR1 sample and rescale to match original signal scale and mean
+    x_synthetic = (x_synthetic - np.mean(x_synthetic)) / np.std(x_synthetic)
+    x_synthetic = x_synthetic * signal_scale + np.mean(x_copy)
 
     ###########################################################################
 

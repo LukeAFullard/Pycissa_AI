@@ -88,20 +88,21 @@ def initial_data_checks(t: np.ndarray, x: np.ndarray, use_32_bit: bool):
             try:
                 t = t.astype('datetime64[ns]')
             except ValueError:
-                raise ValueError("Time vector t could not be converted to datetime. Please ensure it is in a format convertible to datetime64.")
+                if len(t) > 1:
+                    raise ValueError("Time vector t could not be converted to datetime. Please ensure it is in a format convertible to datetime64.")
         if t.dtype == np.dtype('datetime64[ns]'):
             # Check if sorted in ascending order
             if not all(t[i] <= t[i+1] for i in range(len(t)-1)):
                 # Find the first unsorted element for a more informative message
                 for i in range(len(t) - 1):
-                    if not t[i+1] > t[i]:
+                    if not t[i+1] >= t[i]:
                         raise ValueError(f"Time vector t is not sorted in ascending order. Element {t[i+1]} at index {i+1} is less than preceding element {t[i]} at index {i}.")
 
     # Order Check for t
     is_numeric = all(isinstance(item, (int, float, np.integer, np.floating)) for item in t)
     if is_numeric and len(t) > 1:
         for i in range(len(t) - 1):
-            if not t[i+1] > t[i]:
+            if not t[i+1] >= t[i]:
                 raise ValueError(f"Time vector t is not sorted in ascending order. Element {t[i+1]} at index {i+1} is less than preceding element {t[i]} at index {i}.")
     return t,x
 
