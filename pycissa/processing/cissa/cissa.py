@@ -517,6 +517,86 @@ class Cissa:
 
     #--------------------------------------------------------------------------
     #--------------------------------------------------------------------------
+    def pre_fill_uneven_timeseries(self,
+                                   L_values: list[int],
+                                   dt: float,
+                                   gap_threshold: float,
+                                   eps_values: list[float] = None,
+                                   interp_method: str = 'cubic',
+                                   optimization_metric: str = 'rmse',
+                                   r2_warning_threshold: float = 0.5,
+                                   plot: bool = True,
+                                   center_data: bool = False,
+                                   **kwargs):
+        """
+        Wrapper for fill_uneven_timeseries that optionally updates the Cissa object's data to the even grid.
+
+        Parameters
+        ----------
+        L_values : list[int]
+            List of L (window length) parameters to optimize over for CiSSA gap filling.
+        dt : float
+            Grid spacing for the evenly sampled grid.
+        gap_threshold : float
+            Max distance to a real data point on the even grid before it is considered a gap (NaN).
+        eps_values : list[float], optional
+            List of convergence epsilon values to optimize over. If None, defaults to [1.0].
+        interp_method : str, optional
+            Interpolation method. The default is 'cubic'.
+        optimization_metric : str, optional
+            Metric to optimize when selecting L ('rmse' or 'ccc'). The default is 'rmse'.
+        r2_warning_threshold : float, optional
+            R-squared threshold below which a warning is issued. Default is 0.5.
+        plot : bool, optional
+            Whether to produce diagnostic plots.
+        center_data : bool, optional
+            If True, replaces self.t and self.x with the generated evenly sampled and filled grid.
+        **kwargs :
+            Additional arguments passed to fill_timeseries_gaps.
+
+        Returns
+        -------
+        self : Cissa
+        """
+        from pycissa.preprocessing.gap_fill.uneven_gap_filling import fill_uneven_timeseries
+
+        # We pass self.t and self.x which might be uneven
+        results = fill_uneven_timeseries(t=self.t,
+                                         x=self.x,
+                                         L_values=L_values,
+                                         dt=dt,
+                                         gap_threshold=gap_threshold,
+                                         eps_values=eps_values,
+                                         interp_method=interp_method,
+                                         optimization_metric=optimization_metric,
+                                         r2_warning_threshold=r2_warning_threshold,
+                                         plot=plot,
+                                         **kwargs)
+
+        # Optionally, save the figure and results in the cissa object
+        if 'fig' in results:
+            self.figures.get('cissa').update({'figure_uneven_gap_fill': results['fig']})
+            if plt.get_fignums(): plt.close('all')
+
+        self.uneven_gap_fill_results = results
+
+        if center_data:
+            self.t = results['t_even']
+            self.x = results['x_even_filled']
+
+            # Re-check for nan data on the new grid
+            from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+            self.isnan = detect_nan_data(self.x)
+
+            self.information_text += f'''
+        ------------------------------------------------------
+        Data centered to evenly sampled grid.
+        '''
+
+        return self
+
+    #--------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
     def pre_fix_censored_data(self,
                              replace_type:        str = 'raw',
                              lower_multiplier:    float = 0.5,
