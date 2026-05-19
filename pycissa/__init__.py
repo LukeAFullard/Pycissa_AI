@@ -7,6 +7,7 @@ __license__ = "MIT"
 
 # Expose only the top‐level API
 from .processing.cissa.cissa import Cissa
+from .processing.mcissa.mcissa import MCissa
 
 __all__ = [
     "Cissa",
