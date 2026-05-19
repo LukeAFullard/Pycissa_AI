@@ -77,14 +77,14 @@ def get_surrogate_data(data:            np.ndarray,
 
     from pycissa.postprocessing.monte_carlo.surrogates import generate_random_permutation,generate_small_shuffle,generate_ar1_evenly
     if surrogates == 'random_permutation':
-        x_surrogate = generate_random_permutation(data)
+        x_surrogate = generate_random_permutation(data,seed)
     if surrogates == 'small_shuffle':
-        x_surrogate = generate_small_shuffle(data,A_small_shuffle)
+        x_surrogate = generate_small_shuffle(data,A_small_shuffle,seed)
     if surrogates == 'ar1_fit':
         x_surrogate = generate_ar1_evenly(data,seed)
     if surrogates in ['coloured_noise_single', 'coloured_noise_segmented']:
         from pycissa.postprocessing.monte_carlo.fractal_surrogates import generate_colour_surrogate
-        x_surrogate = generate_colour_surrogate(data,alpha_slope,f_breakpoint,alpha_1_slope,alpha_2_slope,surrogates)
+        x_surrogate = generate_colour_surrogate(data,alpha_slope,f_breakpoint,alpha_1_slope,alpha_2_slope,surrogates,seed)
 
 
     return x_surrogate
@@ -247,7 +247,8 @@ def check_for_significance(result:                   dict,
                            pzz:                      np.ndarray,
                            surrogate_results:        list,
                            surrogates:               str,
-                           trend_always_significant: bool)-> tuple[dict,list,list,list]:
+                           trend_always_significant: bool,
+                           sided_test:               str = 'one sided')-> tuple[dict,list,list,list]:
     '''
     Function to check signal components for significance vs the surrogate data.
 
@@ -267,6 +268,8 @@ def check_for_significance(result:                   dict,
         DESCRIPTION: Type of surrogates
     trend_always_significant : bool
         DESCRIPTION: Is the trend always significant? Needed as some surrogate methods test for short fluctuations, not long ones such as trend.
+    sided_test : str, optional
+        DESCRIPTION: When assessing the null hypothesis, are we running a one or two-sided test? The default is 'one sided'.
 
     Returns
     -------
@@ -291,6 +294,7 @@ def check_for_significance(result:                   dict,
 
         #find how many of the surogate data series have a larger psd than the original signal
         larger_surrogates = [x for x in surrogate_results.get(results_key_k) if x > psd_signal]
+        smaller_surrogates = [x for x in surrogate_results.get(results_key_k) if x < psd_signal]
 
         #update results dictionary and return it
         result_.get('components').get(results_key_k).setdefault('monte_carlo', {})
@@ -299,18 +303,21 @@ def check_for_significance(result:                   dict,
 
         result_.get('components').get(results_key_k).get('monte_carlo').get(surrogates).get('alpha').setdefault(alpha,{})
 
-        if len(larger_surrogates) > allowed_larger_surrogates:
-            result_.get('components').get(results_key_k).get('monte_carlo').get(surrogates).get('alpha').get(alpha).update({'signal_psd':psd_signal,
-                                                                                                    'surrogate_psd':surrogate_results.get(results_key_k),
-                                                                                                    'pass'         :False})
+        if sided_test == 'one sided':
+            test_pass = len(larger_surrogates) <= allowed_larger_surrogates
         else:
-            result_.get('components').get(results_key_k).get('monte_carlo').get(surrogates).get('alpha').get(alpha).update({'signal_psd':psd_signal,
-                                                                                                    'surrogate_psd':surrogate_results.get(results_key_k),
-                                                                                                'pass'         :True})
+            test_pass = (len(larger_surrogates) <= allowed_larger_surrogates) or (len(smaller_surrogates) <= allowed_larger_surrogates)
+
+        result_.get('components').get(results_key_k).get('monte_carlo').get(surrogates).get('alpha').get(alpha).update({
+            'signal_psd':psd_signal,
+            'surrogate_psd':surrogate_results.get(results_key_k),
+            'pass': test_pass
+        })
 
         #build list for plotting
         sorted_surrogates = sorted(surrogate_results.get(results_key_k))
         surrogate_index = -1 - allowed_larger_surrogates
+
         plot_period.append(result_.get('components').get(results_key_k).get('unitless period (number of timesteps)'))
         signal_psd.append(psd_signal)
         surrogate_psd.append(sorted_surrogates[surrogate_index])
@@ -468,7 +475,8 @@ def run_monte_carlo_test(x:                        np.ndarray,
     surrogate_results = {}
     for surrogate_i in range(0,number_of_surrogates):
         #generate surrogates
-        x_surrogate = get_surrogate_data(x_copy,L,psd,Z,result,alpha,surrogates,sided_test,remove_trend,frequencies,alpha_slope,f_breakpoint,alpha_1_slope,alpha_2_slope,A_small_shuffle,seed)
+        current_seed = seed + surrogate_i if seed is not None else None
+        x_surrogate = get_surrogate_data(x_copy,L,psd,Z,result,alpha,surrogates,sided_test,remove_trend,frequencies,alpha_slope,f_breakpoint,alpha_1_slope,alpha_2_slope,A_small_shuffle,current_seed)
 
 
         #add the trend back in
@@ -488,7 +496,7 @@ def run_monte_carlo_test(x:                        np.ndarray,
             surrogate_results.setdefault(results_key_j, []).append(pzz_surrogate[key_array_position])
     ############################################
     #check each psd for significance
-    result,plot_period,surrogate_psd,signal_psd = check_for_significance(result,K_surrogates,alpha,pzz,surrogate_results,surrogates,trend_always_significant)
+    result,plot_period,surrogate_psd,signal_psd = check_for_significance(result,K_surrogates,alpha,pzz,surrogate_results,surrogates,trend_always_significant,sided_test)
 
     #find the significant components
     significant_components_index,    non_significant_components_index = find_significant_components(result,surrogates,alpha)

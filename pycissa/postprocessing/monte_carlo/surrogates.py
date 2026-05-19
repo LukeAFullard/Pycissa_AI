@@ -3,7 +3,7 @@ import copy
 ###############################################################################
 ###############################################################################
 
-def generate_random_permutation(x: np.ndarray)->np.ndarray:
+def generate_random_permutation(x: np.ndarray, seed: int = None)->np.ndarray:
     '''
     Function to randomly shuffle an input series
 
@@ -11,6 +11,8 @@ def generate_random_permutation(x: np.ndarray)->np.ndarray:
     ----------
     x : np.ndarray
         DESCRIPTION: Input series
+    seed : int, optional
+        DESCRIPTION: Random seed. The default is None.
 
     Returns
     -------
@@ -20,14 +22,15 @@ def generate_random_permutation(x: np.ndarray)->np.ndarray:
     '''
     x_copy = copy.deepcopy(x)
     #get up random number generator
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
     rng.shuffle(x_copy)
     return x_copy
 
 ###############################################################################
 ###############################################################################
 def generate_small_shuffle(x: np.ndarray,
-                           A: float = 1.)->np.ndarray:
+                           A: float = 1.,
+                           seed: int = None)->np.ndarray:
     '''
     Function to apply the Small Shuffle algorithm to a time series
     Nakamura, T., & Small, M. (2005). Small-shuffle surrogate data: Testing for dynamics in fluctuating data with trends. Physical Review E, 72(5), 056216.
@@ -38,6 +41,8 @@ def generate_small_shuffle(x: np.ndarray,
         DESCRIPTION: Input series
     A : float
         DESCRIPTION: Small shuffle amplitude. The default is 1.
+    seed : int, optional
+        DESCRIPTION: Random seed. The default is None.
 
     Returns
     -------
@@ -47,13 +52,12 @@ def generate_small_shuffle(x: np.ndarray,
     '''
     x_copy = copy.deepcopy(x)
     #get up random number generator
-    rng = np.random.default_rng()
+    rng = np.random.default_rng(seed)
     gaussian_random_numbers = rng.standard_normal(len(x_copy))
 
-    original_index = [x for x in range(0,len(x_copy))]
-    perturbed_index = list(original_index + A*gaussian_random_numbers)
-    sorted_perturbed = sorted(perturbed_index)
-    new_index = [perturbed_index.index(x) for x in sorted_perturbed]
+    original_index = np.arange(len(x_copy))
+    perturbed_index = original_index + A*gaussian_random_numbers
+    new_index = np.argsort(perturbed_index)
 
     #shuffle data according to the small shuffle index
     x_copy = x_copy[new_index]
