@@ -31,6 +31,19 @@ class OverlapCissa(Cissa):
             start_idx = max(0, i - self.L_bar)
             end_idx = min(N, i + self.q + self.L_bar)
 
+            # If the segment is too small to compute L window, extend it backwards.
+            # We also compute how much extra we padded so we discard it later.
+            pad_left = 0
+            if end_idx - start_idx <= 2 * self.L:
+                new_start = max(0, end_idx - 2 * self.L - 1)
+                pad_left = start_idx - new_start
+                start_idx = new_start
+
+
+            # If the segment is too small (usually the trailing segment) to support the required L window for Cissa
+
+
+
             segment_t = self.t[start_idx:end_idx]
             segment_data = self.x[start_idx:end_idx]
 
@@ -39,7 +52,7 @@ class OverlapCissa(Cissa):
             # slice reaches the end of the array.
             needs_ar_right = (end_idx == N)
 
-            yield segment_t, segment_data, needs_ar_left, needs_ar_right
+            yield segment_t, segment_data, needs_ar_left, needs_ar_right, pad_left
 
     def fit(self, extension_type: str = 'AR_LR', multi_thread_run: bool = True, num_workers: int = 2):
         """
@@ -49,7 +62,7 @@ class OverlapCissa(Cissa):
         global_psd = []
 
         # Iterate over segments
-        for segment_t, segment_data, needs_ar_left, needs_ar_right in self._generate_segments():
+        for segment_t, segment_data, needs_ar_left, needs_ar_right, pad_left in self._generate_segments():
             local_cissa = Cissa(t=segment_t, x=segment_data, use_32_bit=self.use_32_bit)
             local_cissa.fit(
                 L=self.L,
@@ -79,6 +92,7 @@ class OverlapCissa(Cissa):
             # Otherwise, we save the middle q samples, which means we slice [L_bar : L_bar + q].
 
             start_slice = 0 if needs_ar_left else self.L_bar
+            start_slice += pad_left
             end_slice = len(Z) if needs_ar_right else start_slice + self.q
 
             # Wait, for the first block (needs_ar_left=True), the start_idx is 0, end_idx is q + L_bar.
