@@ -460,3 +460,21 @@ def test_fit_raises_error_on_non_numeric_when_use_32_bit_false():
     expected_error_msg = "All elements in the input array 'x' must be numeric or convertible to numeric type before fitting. Please check for non-numeric values."
     with pytest.raises(ValueError, match=expected_error_msg):
         cissa_instance.fit(L=2)
+
+def test_pre_fill_gaps_with_overlap_cissa():
+    from pycissa.processing.cissa.cissa import Cissa
+    np.random.seed(42)
+    N = 100
+    t = np.arange(N)
+    x = np.sin(2 * np.pi * t / 20) + np.random.normal(0, 0.1, N)
+
+    # Introduce a gap
+    x[40:60] = np.nan
+
+    cissa = Cissa(t, x)
+    # The gap fill algorithm with overlap Cissa needs q and L_bar.
+    # L=20, so q=30, L_bar=10 is valid.
+    cissa.pre_fill_gaps(L=20, use_cissa_overlap=True, q=30, L_bar=10, plot_result=False, max_iter=2, test_repeats=1)
+
+    assert not np.isnan(cissa.x).any(), "Gaps should be filled."
+    assert hasattr(cissa, 'gap_fill_error_rmse')

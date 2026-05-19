@@ -1,28 +1,23 @@
 import numpy as np
 from pycissa.processing.cissa.cissa import Cissa, initial_data_checks
 
-class OverlapCissa:
+class OverlapCissa(Cissa):
     """
     Overlap-SSA (ov-SSA) decomposition methodology.
     Based on Leles et al. (2018), it uses an overlap-save technique
     to decompose long time series without boundary artifacts.
     """
     def __init__(self, t: np.ndarray, x: np.ndarray, Z: int, q: int, L: int, use_32_bit: bool = False, **cissa_kwargs):
-        self.use_32_bit = use_32_bit
-        t, x = initial_data_checks(t, x, self.use_32_bit)
-        self.t_raw = t
-        self.x_raw = x
-        self.t = t
-        self.x = x
-        self.Z = Z
+        super().__init__(t, x, use_32_bit)
+        self.Z_len = Z
         self.q = q
         self.L = L
 
         # Calculate discarded boundary length (must satisfy Z = q + 2 * L_bar)
-        self.L_bar = (self.Z - self.q) // 2
+        self.L_bar = (self.Z_len - self.q) // 2
 
-        if self.Z != self.q + 2 * self.L_bar:
-            raise ValueError(f"Z ({self.Z}) must equal q ({self.q}) + 2 * L_bar. Ensure (Z - q) is even.")
+        if self.Z_len != self.q + 2 * self.L_bar:
+            raise ValueError(f"Z ({self.Z_len}) must equal q ({self.q}) + 2 * L_bar. Ensure (Z - q) is even.")
 
         self.cissa_kwargs = cissa_kwargs
 
@@ -110,6 +105,8 @@ class OverlapCissa:
 
         results = self.results
         results.get('cissa').setdefault('model parameters', {})
+        results.get('cissa').setdefault('noise component tests', {})
+        results.get('cissa').setdefault('fractal scaling results', {})
         results.get('cissa').get('model parameters').update({
             'extension_type': extension_type,
             'L': self.L,
