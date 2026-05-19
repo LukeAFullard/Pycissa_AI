@@ -893,6 +893,7 @@ def generate_coloured_noise_surrogates(x             : np.ndarray,
                                        f_breakpoint  : float|None = None,
                                        alpha_1_slope : float|None = None,
                                        alpha_2_slope : float|None = None,
+                                       seed          : int|None = None
                                        ):
 
     if not alpha_slope:
@@ -906,10 +907,10 @@ def generate_coloured_noise_surrogates(x             : np.ndarray,
     sigma = tsi.std()
     if alpha_slope:
         y_surr = np.empty((len(x),))
-        y_surr[:,] = colored_noise(alpha=alpha_slope,t=time, std = sigma) + mu
+        y_surr[:,] = colored_noise(alpha=alpha_slope,t=time, std = sigma, seed=seed) + mu
     else:
         y_surr = np.empty((len(x),))
-        y_surr[:,] = colored_noise_2regimes(alpha_1_slope, alpha_2_slope, f_breakpoint, time, std=sigma) + mu
+        y_surr[:,] = colored_noise_2regimes(alpha_1_slope, alpha_2_slope, f_breakpoint, time, std=sigma, seed=seed) + mu
     return y_surr
 
 
@@ -971,12 +972,13 @@ def generate_colour_surrogate(data            :np.ndarray,
                               alpha_1_slope:   float,
                               alpha_2_slope:   float,
                               surrogates:      str,
+                              seed:            int|None = None
                                ) -> np.ndarray:
 
 
     #5) generate the surrogates
     if surrogates == 'coloured_noise_single':
-        x_surrogate = generate_coloured_noise_surrogates(data,alpha_slope=alpha_slope)
+        x_surrogate = generate_coloured_noise_surrogates(data,alpha_slope=alpha_slope,seed=seed)
     if surrogates == 'coloured_noise_segmented':
-        x_surrogate   = generate_coloured_noise_surrogates(data,f_breakpoint=f_breakpoint,alpha_1_slope=alpha_1_slope,alpha_2_slope=alpha_2_slope)
+        x_surrogate   = generate_coloured_noise_surrogates(data,f_breakpoint=f_breakpoint,alpha_1_slope=alpha_1_slope,alpha_2_slope=alpha_2_slope,seed=seed)
     return x_surrogate
