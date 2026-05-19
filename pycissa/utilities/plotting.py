@@ -435,3 +435,44 @@ def yearly_boxplots(t:          np.ndarray,
     return fig
 
 
+
+def plot_m_components(t: np.ndarray, x: np.ndarray, extracted_components: list, variable_names: list = None, component_names: list = None):
+    """
+    Plots the multivariate original series and extracted components for each variable.
+
+    Parameters:
+    t: np.ndarray (1D)
+    x: np.ndarray (T, M) - Original multivariate series
+    extracted_components: list of np.ndarray, each of shape (T, M) - e.g. [trend, low_freq, high_freq]
+    variable_names: list of str - Names for the M variables
+    component_names: list of str - Names for the extracted components
+    """
+    M = x.shape[1]
+    num_components = len(extracted_components)
+
+    if variable_names is None:
+        variable_names = [f'Variable {m+1}' for m in range(M)]
+    if component_names is None:
+        component_names = [f'Component {i+1}' for i in range(num_components)]
+
+    fig, axes = plt.subplots(M, num_components + 1, figsize=(4 * (num_components + 1), 3 * M), sharex=True)
+
+    # If M is 1, axes is 1D. Make it 2D for consistent indexing
+    if M == 1:
+        axes = np.expand_dims(axes, axis=0)
+
+    for m in range(M):
+        # Plot Original
+        axes[m, 0].plot(t, x[:, m], color='black')
+        if m == 0:
+            axes[m, 0].set_title("Original")
+        axes[m, 0].set_ylabel(variable_names[m])
+
+        # Plot Extracted Components
+        for i, comp in enumerate(extracted_components):
+            axes[m, i + 1].plot(t, comp[:, m], color=f'C{i}')
+            if m == 0:
+                axes[m, i + 1].set_title(component_names[i])
+
+    plt.tight_layout()
+    return fig

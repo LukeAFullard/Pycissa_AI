@@ -100,3 +100,36 @@ class MCissa:
         }
 
         return self
+
+    def plot_components(self, num_components: int = 3, variable_names: list = None, component_names: list = None):
+        """
+        Groups the components by total variance across all variables and plots the top `num_components`.
+
+        Parameters:
+        num_components: int - Number of top components to plot (ordered by variance)
+        variable_names: list of str - Names for the variables
+        component_names: list of str - Names for the extracted components
+        """
+        from pycissa.utilities.plotting import plot_m_components
+
+        if not hasattr(self, 'Z_stacked'):
+            raise ValueError("Model not fitted. Call fit() before plotting.")
+
+        M = self.Z_stacked.shape[1]
+        nft = self.Z_stacked.shape[2]
+
+        # Calculate total variance across all variables for each frequency
+        variances = [np.sum([np.var(self.Z_stacked[:, m, i]) for m in range(M)]) for i in range(nft)]
+
+        # Sort indices by descending variance
+        sorted_indices = np.argsort(variances)[::-1]
+
+        # Extract the top components
+        extracted_components = []
+        for i in range(min(num_components, nft)):
+            extracted_components.append(self.Z_stacked[:, :, sorted_indices[i]])
+
+        fig = plot_m_components(self.t, self.x, extracted_components, variable_names, component_names)
+        self.figures.get('mcissa').update({'figure_components': fig})
+
+        return fig
