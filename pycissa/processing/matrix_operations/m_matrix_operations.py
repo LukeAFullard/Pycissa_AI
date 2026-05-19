@@ -80,18 +80,21 @@ def m_cross_spectral_density_and_eigenvectors(C: np.ndarray, L: int, M: int) -> 
         D.append(np.abs(eigenvalues))
 
     V = np.kron(U, np.eye(M)) @ scipy.linalg.block_diag(*E)
-    V[:, 0:M] = np.real(V[:, 0:M])
+
+    # Create a copy because we are updating V in place and indexing
+    V_real = V.copy()
+    V_real[:, 0:M] = np.real(V[:, 0:M])
 
     nf2, nft = calculate_number_of_frequencies(L)
     for k in range(1, int(nf2) + 1):
         v_l = V[:, k*M : (k+1)*M]
-        V[:, k*M : (k+1)*M] = np.sqrt(2) * np.real(v_l)
-        V[:, (L-k)*M : (L-k+1)*M] = np.sqrt(2) * np.imag(v_l)
+        V_real[:, k*M : (k+1)*M] = np.sqrt(2) * np.real(v_l)
+        V_real[:, (L-k)*M : (L-k+1)*M] = np.sqrt(2) * np.imag(v_l)
 
     if L % 2 == 0:
-        V[:, M*int(nft-1) : M*int(nft)] = np.real(V[:, M*int(nft-1) : M*int(nft)])
+        V_real[:, M*int(nft-1) : M*int(nft)] = np.real(V_real[:, M*int(nft-1) : M*int(nft)])
 
-    V = np.real(V)
+    V = np.real(V_real)
 
     return V, D, np.array(D)
 
