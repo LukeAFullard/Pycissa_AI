@@ -581,8 +581,49 @@ def update_imputed_gap_values(x_new: np.ndarray,
         #
         #
     else: #here we use overlap-CiSSA
-        print('NEED TO ADD CODE HERE TO DO THIS USING OVERLAP CISSA')
-        print('MAY need to add additional input parameters to this function when ov-cissa added')
+        from pycissa.processing.cissa.overlap_cissa import OverlapCissa
+        # We need to construct Z from kwargs or use a default.
+        q = kwargs.get('q', 2 * L)
+        L_bar = kwargs.get('L_bar', L // 2)
+        Z_len = q + 2 * L_bar
+
+        ocissa = OverlapCissa(t=np.arange(len(x_new)), x=x_new, Z=Z_len, q=q, L=L, use_32_bit=False)
+        ocissa.fit(extension_type=extension_type, multi_thread_run=multi_thread_run)
+
+        Z = ocissa.Z
+        psd = ocissa.psd
+
+        if component_selection_method == 'drop_smallest_n':
+            from pycissa.postprocessing.grouping.grouping_functions import drop_smallest_n_components
+            temp_array = drop_smallest_n_components(Z, psd, L, number_of_groups_to_drop=number_of_groups_to_drop)
+        elif component_selection_method == 'drop_smallest_proportion':
+            from pycissa.postprocessing.grouping.grouping_functions import drop_smallest_proportion_psd
+            temp_array = drop_smallest_proportion_psd(Z, psd, eigenvalue_proportion)
+        elif component_selection_method == 'monte_carlo_significant_components':
+            warnings.warn("NOTE: The monte_carlo_significant_components method can sometimes be a challenge to converge.")
+            from pycissa.utilities.generate_cissa_result_dictionary import generate_results_dictionary
+            from pycissa.postprocessing.grouping.grouping_functions import drop_monte_carlo_non_significant_components
+            from pycissa.postprocessing.monte_carlo.montecarlo import run_monte_carlo_test, prepare_monte_carlo_kwargs
+            temp_results = generate_results_dictionary(Z, psd, L)
+            K_surrogates, surrogates, seed, sided_test, remove_trend, trend_always_significant, A_small_shuffle, generate_toeplitz_matrix = prepare_monte_carlo_kwargs(kwargs)
+            from pycissa.postprocessing.grouping.grouping_functions import generate_grouping
+            myfrequencies = generate_grouping(psd, L, trend=True)
+            temp_result, _ = run_monte_carlo_test(x_new, L, psd, Z, temp_results.get('cissa'), myfrequencies,
+                                     alpha=alpha,
+                                     K_surrogates=K_surrogates,
+                                     surrogates=surrogates,
+                                     seed=seed,
+                                     sided_test=sided_test,
+                                     remove_trend=remove_trend,
+                                     trend_always_significant=trend_always_significant,
+                                     A_small_shuffle=A_small_shuffle,
+                                     extension_type=extension_type,
+                                     multi_thread_run=multi_thread_run,
+                                     generate_toeplitz_matrix=generate_toeplitz_matrix,
+                                     plot_figure=False)
+            temp_array = drop_monte_carlo_non_significant_components(Z, temp_result, surrogates, alpha)
+        else:
+            raise ValueError(f"Input parameter component_selection_method was supplied as {component_selection_method}. This MUST be one of 'drop_smallest_n', 'drop_smallest_proportion', or 'drop_non_AR_noise (Work in progress)'.")
 
 
     updated_values = None
