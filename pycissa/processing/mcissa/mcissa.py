@@ -58,13 +58,105 @@ class MCissa:
         self.x_raw = x
         self.t_raw = t
 
+        #perform check for censored data
+        from pycissa.preprocessing.data_cleaning.data_cleaning import detect_censored_data
+        self.censored,num_censored = detect_censored_data(x.flatten())
+
+        self.information_text = ''
+        if self.censored:
+            warnings.warn("WARNING: Censored data detected. Please run pre_fix_censored_data before fitting.")
+            self.information_text += f'''
+            ------------------------------------------------------
+            {num_censored} censored data points found.
+            '''
+
+        #perform check for nan data
+        from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+        self.isnan = detect_nan_data(x.flatten())
+        if self.isnan: warnings.warn("WARNING: nan data detected. Please run pre_fill_gaps before fitting.")
+
         self.t = t
         self.x = x
 
-        self.information_text = ''
         if not hasattr(self, 'figures'):
             self.figures = {}
         self.figures.update({'mcissa': {}})
+
+    def restore_original_data(self):
+        '''
+        Method to restore original data (x,t) = (x_raw,t_raw)
+        '''
+        from pycissa.preprocessing.data_cleaning.data_cleaning import detect_censored_data,detect_nan_data
+        self.x = self.x_raw
+        self.t = self.t_raw
+        self.censored,num_censored = detect_censored_data(self.x.flatten())  #if we restore the data we must check if the restored data is censored again...
+        self.isnan = detect_nan_data(self.x.flatten())
+
+    def pre_fix_censored_data(self,
+                             replace_type:        str = 'raw',
+                             lower_multiplier:    float = 0.5,
+                             upper_multiplier:    float = 1.1,
+                             default_value_lower: float = 0.,
+                             default_value_upper: float = 0.,
+                             hicensor_lower:      bool = False,
+                             hicensor_upper:      bool = False,
+                             ):
+        '''
+        Function to find and replace upper and lower censored data in the multivariate input array x.
+
+        Parameters
+        ----------
+        replace_type : str, optional
+            DESCRIPTION: Type of replacememt if a censored value is found. Allowed values are 'raw', 'multiple', or 'constant'. The default is 'raw'.
+        lower_multiplier : float, optional
+            DESCRIPTION. Only used if replacememt_type == 'multiple'. This is the multiplier to apply to a lower censored data point. For example, a point '<1' will become '1*lower_multiplier'. The default is 0.5.
+        upper_multiplier : float, optional
+            DESCRIPTION. Only used if replacememt_type == 'multiple'. This is the multiplier to apply to a upper censored data point. For example, a point '>1' will become '1*upper_multiplier'. The default is 1.1.
+        default_value_lower : float, optional
+            DESCRIPTION. Only used if replacement_type == 'constant'. The numeric value to replace any left (lower) censored data. For example, '<1' becomes 'default_value_lower'. The default is 0.-
+        default_value_upper : float, optional
+            DESCRIPTION. Only used if replacement_type == 'constant'. The numeric value to replace any right (upper) censored data. For example, '<1' becomes 'default_value_upper'. The default is 0.
+        hicensor_lower : bool, optional
+            DESCRIPTION. Whether lower censored data should be replaced with the largest (replaced) censored value. The default is False.
+        hicensor_upper : bool, optional
+            DESCRIPTION. Whether upper censored data should be replaced with the smallest (replaced) censored value. The default is False.
+
+        Returns
+        -------
+        self : MCissa
+        '''
+        if self.censored:
+            from pycissa.preprocessing.data_cleaning.data_cleaning import _fix_censored_data, detect_nan_data, detect_censored_data
+
+            # Since self.x is a 2D array, we can iterate over its columns and process each variable
+            new_x = np.empty_like(self.x, dtype=np.float64)
+            censoring = np.empty_like(self.x, dtype=object)
+
+            for m in range(self.x.shape[1]):
+                col_fixed, col_censoring = _fix_censored_data(self.x[:, m],
+                                         replacement_type = replace_type,
+                                         lower_multiplier = lower_multiplier,
+                                         upper_multiplier = upper_multiplier,
+                                         default_value_lower = default_value_lower,
+                                         default_value_upper = default_value_upper,
+                                         hicensor_lower = hicensor_lower,
+                                         hicensor_upper = hicensor_upper,)
+                new_x[:, m] = col_fixed
+                censoring[:, m] = col_censoring
+
+            self.x = new_x
+            self.censoring = censoring
+
+            self.isnan = detect_nan_data(self.x.flatten())
+            self.censored,_ = detect_censored_data(self.x.flatten())
+            self.information_text += f'''
+            ------------------------------------------------------
+            Censored data replaced
+            '''
+
+        else: warnings.warn("WARNING: No censored data detected. Returning unchanged data.")
+
+        return self
 
     def fit(self, L: int, extension_type: str = 'AR_LR', extend_left: bool = True, extend_right: bool = True):
         """
