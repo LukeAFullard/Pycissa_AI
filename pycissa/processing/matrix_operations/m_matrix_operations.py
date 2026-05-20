@@ -225,7 +225,7 @@ def run_mcissa(x: np.ndarray, L: int, extension_type: str = 'AR_LR', extend_left
     T_ext = x_e.shape[0]
 
     X = create_m_trajectory_matrix(x_e, L, M)
-    Gam = create_m_autocovariance(x, L, T, M)
+    Gam = create_m_autocovariance(x_e, L, T_ext, M)
     S, C = create_m_toeplitz_circulant(Gam, L, M)
 
     V, D_list, D_array = m_cross_spectral_density_and_eigenvectors(C, L, M)

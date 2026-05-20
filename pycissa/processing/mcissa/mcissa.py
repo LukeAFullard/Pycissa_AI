@@ -597,6 +597,76 @@ class MCissa:
         print("Auto M-CiSSA Complete!")
         return self
 
+    def auto_blind_source_separation(self,
+                                     L: int = None,
+                                     main_index: int = 0,
+                                     alpha: float = 0.05,
+                                     **kwargs):
+        '''
+        Automatically remove the influence of additional reference series from a main series.
+        Uses M-CiSSA Monte Carlo surrogate testing to identify components that are statistically significant in the reference channels.
+        These significant "influence" components are subtracted from the main signal.
+        '''
+        if not L:
+            L = int(np.floor(len(self.x)/2))
+
+        print('Checking for censored or nan data...')
+        _ = self.auto_fix_censoring_nan(L,**kwargs)
+
+        print('RUNNING M-CISSA!')
+        _ = self.fit(
+                L,
+                extension_type = kwargs.get('extension_type','AR_LR'),
+                extend_left = kwargs.get('extend_left',True),
+                extend_right = kwargs.get('extend_right',True))
+
+        print('Performing reference-channel monte-carlo significance analysis...')
+        from pycissa.postprocessing.monte_carlo.m_montecarlo_reference import run_m_monte_carlo_reference_test
+
+        surrogates = kwargs.get('surrogates','random_permutation')
+        reference_indices = [i for i in range(self.x.shape[1]) if i != main_index]
+
+        mc_results = run_m_monte_carlo_reference_test(x = self.x,
+                             L = self.L,
+                             psd = self.psd,
+                             results = self.results.get('mcissa'),
+                             reference_indices = reference_indices,
+                             alpha = alpha,
+                             K_surrogates = kwargs.get('K_surrogates',1),
+                             surrogates = surrogates,
+                             seed = kwargs.get('seed',None),
+                             sided_test = kwargs.get('sided_test','one sided'),
+                             remove_trend = kwargs.get('remove_trend',True),
+                             trend_always_significant = kwargs.get('trend_always_significant',True),
+                             extension_type = self.extension_type,
+                             extend_left = True,
+                             extend_right = True,
+                                 )
+
+        self.results.get('mcissa').update(mc_results)
+        self.results['mcissa']['model parameters'].update({'monte_carlo_surrogate_type': surrogates})
+        self.results['mcissa']['model parameters'].update({'monte_carlo_alpha': alpha})
+
+        influence_components = []
+        unique_components = []
+
+        for component_j in self.results.get('mcissa').get('components'):
+            mc_pass = self.results.get('mcissa').get('components').get(component_j).get('monte_carlo').get(surrogates).get('alpha').get(alpha).get('pass')
+            array_pos = self.results.get('mcissa').get('components').get(component_j).get('array_position')
+
+            # If the component is significant in the reference channel, it is deemed an influence.
+            if mc_pass:
+                influence_components.append(array_pos)
+            else:
+                unique_components.append(array_pos)
+
+        # Reconstruct the cleaned main series using only the unique components
+        self.x_cleaned = np.sum(self.Z_stacked[:, main_index, unique_components], axis=1)
+        self.x_influence = np.sum(self.Z_stacked[:, main_index, influence_components], axis=1)
+
+        print("Auto Blind Source Separation Complete!")
+        return self
+
     def auto_cissa_classic(self,
                    I:                         int|float|dict,
                    L: int = None,
