@@ -29,11 +29,10 @@ def create_m_autocovariance(x: np.ndarray, L: int, T: int, M: int) -> np.ndarray
     """
     Gam = np.zeros((M, M, L))
     mean_x = np.mean(x, axis=0) # shape (M,)
+    x_centered = x - mean_x
 
     for m in range(L):
-        x_1 = x[0:T-m, :] - mean_x
-        x_2 = x[m:T, :] - mean_x
-        Gam[:, :, m] = (x_1.T @ x_2) / (T - m)
+        Gam[:, :, m] = (x_centered[0:T-m].T @ x_centered[m:T]) / (T - m)
 
     return Gam
 
@@ -42,17 +41,33 @@ def create_m_toeplitz_circulant(Gam: np.ndarray, L: int, M: int) -> tuple[np.nda
     Block Toeplitz cross-covariance matrix S and equivalent block circulant matrix C
     Gam: shape (M, M, L)
     """
-    S = np.kron(np.eye(L), Gam[:, :, 0])
-    C = S.copy()
+    idx = np.arange(L)
+    K = np.abs(idx[:, None] - idx[None, :]) # L x L lag diff matrix
 
-    for j in range(L):
-        for k in range(j+1, L):
-            m = np.abs(j - k)
-            S[j*M : (j+1)*M, k*M : (k+1)*M] = Gam[:, :, m]
-            S[k*M : (k+1)*M, j*M : (j+1)*M] = Gam[:, :, m].T
+    # Gam is (M, M, L). Transpose to (L, M, M) for easier indexing by lag
+    Gam_L = Gam.transpose(2, 0, 1) # (L, M, M)
+    Gam_L_T = Gam_L.transpose(0, 2, 1) # (L, M, M), where Gam_L_T[m] = Gam_L[m].T
 
-            C[j*M : (j+1)*M, k*M : (k+1)*M] = ((L - m) / L) * Gam[:, :, m] + (m / L) * Gam[:, :, L - m].T
-            C[k*M : (k+1)*M, j*M : (j+1)*M] = ((L - m) / L) * Gam[:, :, m].T + (m / L) * Gam[:, :, L - m]
+    lower = idx[:, None] > idx[None, :]
+
+    # S blocks
+    S_blocks = np.empty((L, L, M, M))
+    S_blocks[~lower] = Gam_L[K[~lower]]
+    S_blocks[lower] = Gam_L_T[K[lower]]
+    S = S_blocks.transpose(0, 2, 1, 3).reshape(L*M, L*M)
+
+    # C blocks
+    m_array = np.arange(L)[:, None, None]
+    Gam_L_T_pad = np.zeros((L+1, M, M))
+    Gam_L_T_pad[:L] = Gam_L_T
+
+    C_val = ((L - m_array) / L) * Gam_L + (m_array / L) * Gam_L_T_pad[L - m_array[:, 0, 0]]
+    C_val_T = C_val.transpose(0, 2, 1)
+
+    C_blocks = np.empty((L, L, M, M))
+    C_blocks[~lower] = C_val[K[~lower]]
+    C_blocks[lower] = C_val_T[K[lower]]
+    C = C_blocks.transpose(0, 2, 1, 3).reshape(L*M, L*M)
 
     return S, C
 
@@ -124,14 +139,38 @@ def m_reconstruction(V: np.ndarray, W: np.ndarray, L: int, M: int, T_ext: int) -
     Rs is a list of length M, each element is shape (T_ext, M, L).
     R is a list of length M, each element is shape (T_ext, L).
     """
-    Rs = [np.zeros((T_ext, M, L)) for _ in range(M)]
+    from concurrent.futures import ThreadPoolExecutor
 
-    for k in range(L):
+    Rs = [np.zeros((T_ext, M, L)) for _ in range(M)]
+    N_eff = T_ext - L + 1
+
+    row, col = np.indices((L, N_eff))
+    s_flat = (row + col).ravel()
+    count_s = np.bincount(s_flat)
+
+    def process_k(k):
+        res = np.zeros((M, M, T_ext))
+        V_slice = V[:, k*M : (k+1)*M].reshape((L, M, M))
+        W_slice = W[k*M : (k+1)*M, :]
+
         for m in range(M):
-            Y_km = np.outer(V[:, k*M + m], W[k*M + m, :])
-            y = diagaver_m(Y_km, M)
-            for j in range(M):
-                Rs[j][:, m, k] = y[:, j]
+            w_row = W_slice[m, :]
+            for i in range(M):
+                v_block = V_slice[:, i, m]
+                Y_block = np.outer(v_block, w_row)
+
+                sum_s = np.bincount(s_flat, weights=Y_block.ravel())
+                y_col = sum_s / count_s
+
+                res[i, m, :] = y_col
+        return res
+
+    with ThreadPoolExecutor() as executor:
+        results = list(executor.map(process_k, range(L)))
+
+    for k, res in enumerate(results):
+        for i in range(M):
+            Rs[i][:, :, k] = res[i, :, :].T
 
     R = [np.sum(Rs[j], axis=1) for j in range(M)]
     return Rs, R
