@@ -158,6 +158,353 @@ class MCissa:
 
         return self
 
+    #--------------------------------------------------------------------------
+    from datetime import datetime
+    def pre_fix_missing_samples(
+            self,
+            version:              str = 'date',
+            start_date:           str|datetime = 'min',
+            date_settings:        dict = {'input_dateformat'  :'',
+                                          'years'             :0,
+                                          'months'            :1,
+                                          'days'              :0,
+                                          'hours'             :0,
+                                          'minutes'           :0,
+                                          'seconds'           :0,
+                                          'year_delta'        :0,
+                                          'month_delta'       :0,
+                                          'day_delta'         :14,
+                                          'hour_delta'        :0,
+                                          'minute_delta'      :0,
+                                          'second_delta'      :0,
+                                          },
+            numeric_time_settings: dict = {'t_step'    :1.,
+                                           'wiggleroom':0.99
+                                            },
+            missing_value:      int = np.nan
+            ):
+        '''
+        Function that finds and corrects missing values in the time series.
+        Missing dates result in adding a default value "missing_value" into the input data.
+
+        **THIS FUNCTION IS A WORK IN PROGRESS. USE WITH EXTREME CAUTION.**
+
+        Parameters
+        ----------
+        self : MCissa object
+            DESCRIPTION: MCissa object
+        version : str, optional
+            DESCRIPTION: String describing the type of time data. One of 'date' or 'numeric'. The default is 'date'.
+        start_date : str|datetime
+            DESCRIPTION: Only used if version = 'date'. If start_date = 'min' then the minimum date is used, otherwise the given datetime is taken as the first required time. The default is 'min'.
+        date_settings : dict, optional
+            DESCRIPTION: Dictionary of date settings as defined below:
+                                {
+                                years : int, optional
+                                    DESCRIPTION: (ideal) number of years between each timestep in input array t. The default is 0.
+                                months : int, optional
+                                    DESCRIPTION: (ideal) number of months between each timestep in input array t. The default is 1.
+                                days : int, optional
+                                    DESCRIPTION: (ideal) number of days between each timestep in input array t. The default is 0.
+                                hours : int, optional
+                                    DESCRIPTION: (ideal) number of hours between each timestep in input array t. The default is 0.
+                                minutes : int, optional
+                                    DESCRIPTION: (ideal) number of minutes between each timestep in input array t. The default is 0.
+                                seconds : int, optional
+                                    DESCRIPTION: (ideal) number of seconds between each timestep in input array t. The default is 0.
+                                input_dateformat : str, optional
+                                    DESCRIPTION: Datetime string format. The default is '%Y'. See https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+                                year_delta : int, optional
+                                    DESCRIPTION: Integer years to build a tolerance interval around the desired timestep. If the time is within the "wiggleroom", then the time is OK. For example, if we have a monthly sampling frequency on the 15th of the month, but one sample is on the 14th, we don't want to say that the sample is missing. The default is 0.
+                                month_delta : int, optional
+                                    DESCRIPTION: Integer months to build a tolerance interval around the desired timestep. If the time is within the "wiggleroom", then the time is OK. For example, if we have a monthly sampling frequency on the 15th of the month, but one sample is on the 14th, we don't want to say that the sample is missing. The default is 0.
+                                day_delta : int, optional
+                                    DESCRIPTION: Integer days to build a tolerance interval around the desired timestep. If the time is within the "wiggleroom", then the time is OK. For example, if we have a monthly sampling frequency on the 15th of the month, but one sample is on the 14th, we don't want to say that the sample is missing. The default is 0.
+                                hour_delta : int, optional
+                                    DESCRIPTION: Integer hours to build a tolerance interval around the desired timestep. If the time is within the "wiggleroom", then the time is OK. For example, if we have a monthly sampling frequency on the 15th of the month, but one sample is on the 14th, we don't want to say that the sample is missing. The default is 0.
+                                minute_delta : int, optional
+                                    DESCRIPTION: Integer minutes to build a tolerance interval around the desired timestep. If the time is within the "wiggleroom", then the time is OK. For example, if we have a monthly sampling frequency on the 15th of the month, but one sample is on the 14th, we don't want to say that the sample is missing. The default is 0.
+                                second_delta : int, optional
+                                    DESCRIPTION: Integer seconds to build a tolerance interval around the desired timestep. If the time is within the "wiggleroom", then the time is OK. For example, if we have a monthly sampling frequency on the 15th of the month, but one sample is on the 14th, we don't want to say that the sample is missing. The default is 0.
+                                    }
+        numeric_time_settings : dict, optional
+            Dictionary of date settings as defined below:
+                               {
+                               t_step : int|float, optional
+                                   DESCRIPTION: numeric value of the time step. The default is 1.
+                               wiggleroom : int|float, optional
+                                   DESCRIPTION: Numeric value for the 'wiggle room' associated with a tolerance tolerance interval around the desired timestep. If the time is within the "wiggleroom", then the time is OK. For example, if we have a time step of 2 and the wiggle room is 0.2, then a series of times 2,4,6,7.9,10,... would be OK, but 2,4,6,7.7,10 would not and would correct the time value to 2,4,6,8,10. The default is 0.99.
+                                   }
+        missing_value : int, optional
+            DESCRIPTION: The value which is entered when a missing value is found. The default is np.nan.
+
+        Returns
+        -------
+        self : MCissa object
+        '''
+
+        if version == 'date':
+            if not (date_settings.get('years',0)+date_settings.get('months',0)+date_settings.get('days',0)+date_settings.get('hours',0)+date_settings.get('minutes',0)+date_settings.get('seconds',0)) > 0: raise ValueError(f"At least one date step must be provided and greater than zero. Please check the 'years', 'months', 'days', 'hours', 'minutes', and 'seconds' in date_settings (Note, some of these may be excluded or zero, but at least one should be provided and >0 )")
+            from pycissa.preprocessing.data_cleaning.data_cleaning import _fix_missing_date_samples
+            self.t,self.x,self.added_times, self.t_centered = _fix_missing_date_samples(
+                                     self.t,
+                                     self.x,
+                                     start_date,
+                                       years             = date_settings.get('years',0),
+                                       months            = date_settings.get('months',0),
+                                       days              = date_settings.get('days',0),
+                                       hours             = date_settings.get('hours',0),
+                                       minutes           = date_settings.get('minutes',0),
+                                       seconds           = date_settings.get('seconds',0),
+                                       input_dateformat  = date_settings.get('input_dateformat',0),
+                                       year_delta        = date_settings.get('year_delta',0),
+                                       month_delta       = date_settings.get('month_delta',0),
+                                       day_delta         = date_settings.get('day_delta',0),
+                                       hour_delta        = date_settings.get('hour_delta',0),
+                                       minute_delta      = date_settings.get('minute_delta',0),
+                                       second_delta      = date_settings.get('second_delta',0),
+                                       missing_value     = missing_value)
+
+        elif version == 'numeric':
+            from pycissa.preprocessing.data_cleaning.data_cleaning import _fix_missing_numeric_samples
+            self.t,self.x,self.added_times,self.t_centered = _fix_missing_numeric_samples(
+                                        self.t,
+                                        self.x,
+                                       t_step         = numeric_time_settings.get('t_step',1),
+                                       wiggleroom     = numeric_time_settings.get('wiggleroom',0.99),
+                                       missing_value  = missing_value
+                                       )
+        else: raise ValueError(f"Input parameter 'version' shpuld be one of 'date' or 'numeric', depending on the time data type. You entered: {version}.")
+
+        from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+        self.isnan = detect_nan_data(self.x)
+
+        # Count properly for numpy array logic
+        added_count = np.sum(self.added_times == True) if self.added_times is not None else 0
+
+        self.information_text += f'''
+        ------------------------------------------------------
+        {added_count} number of samples missing in the time series to ensure it is approximately evenly spaced.
+        '''
+
+        return self
+
+    def pre_fill_gaps(self,
+                  L:                          int,
+                  convergence:                list|None = None,
+                  extension_type:             str  = 'AR_LR',
+                  multi_thread_run:           bool = True,
+                  initial_guess:              list = ['previous', 1],
+                  outliers:                   list = ['nan_only',None],
+                  estimate_error:             bool  = True,
+                  test_number:                int = 10,
+                  test_repeats:               int = 5,
+                  z_value:                    float = 1.96,
+                  component_selection_method: str = 'drop_smallest_n',
+                  eigenvalue_proportion:      float = 0.95,
+                  number_of_groups_to_drop:   int = 1,
+                  min_number_of_groups_to_drop:int = 1,
+                  data_per_unit_period:       int = 1,
+                  use_cissa_overlap:          bool = False,
+                  drop_points_from:           str = 'Left',
+                  max_iter:                   int = 100,
+                  verbose:                    bool = False,
+                  alpha:                      float = 0.05,
+                  **kwargs,
+                  ):
+        '''
+        Multivariate implementation of gap filling. Fills gaps using joint multivariate CiSSA gap filling.
+        '''
+
+        if convergence is None:
+            convergence = ['value', 0.01 * np.nanmin(self.x)]
+
+        # Variables to store results across all M channels
+        M = self.x.shape[1]
+
+        if not hasattr(self, 'figures'):
+            self.figures = {}
+        if 'mcissa' not in self.figures:
+            self.figures['mcissa'] = {}
+
+        self.figures['mcissa']['figure_gap_fill_error'] = []
+        self.figures['mcissa']['figure_gap_fill'] = []
+
+        if self.censored:
+            raise ValueError("Censored data detected. Please run pre_fix_censored_data before fitting.")
+
+        from pycissa.preprocessing.gap_fill.gap_filling import m_fill_timeseries_gaps
+        res = m_fill_timeseries_gaps(self.t, self.x, L=L, convergence=convergence, extension_type=extension_type,
+                                    multi_thread_run=multi_thread_run, initial_guess=initial_guess, outliers=outliers,
+                                    estimate_error=estimate_error, test_number=test_number, test_repeats=test_repeats,
+                                    z_value=z_value, component_selection_method=component_selection_method,
+                                    eigenvalue_proportion=eigenvalue_proportion, number_of_groups_to_drop=number_of_groups_to_drop,
+                                    data_per_unit_period=data_per_unit_period, max_iter=max_iter, verbose=verbose, **kwargs)
+
+        x_ca, err_est, err_est_perc, err_rmse, err_rmse_perc, orig_pts, imp_pts, fig_err, fig_ts = res
+        self.x = x_ca
+
+        # Storing these simply since m_fill_timeseries_gaps isn't tracking individual channels the exact same way
+        self.gap_fill_error_estimates = err_est
+        self.gap_fill_error_estimates_percentage = err_est_perc
+        self.gap_fill_error_rmse = err_rmse
+        self.gap_fill_error_rmse_percentage = err_rmse_perc
+        self.gap_fill_original_points = orig_pts
+        self.gap_fill_imputed_points = imp_pts
+
+        self.figures['mcissa']['figure_gap_fill_error'].append(fig_err)
+        self.figures['mcissa']['figure_gap_fill'].append(fig_ts)
+
+        from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+        self.isnan = detect_nan_data(self.x)
+
+        avg_rmse = self.gap_fill_error_rmse
+        avg_rmse_perc = self.gap_fill_error_rmse_percentage
+
+        self.information_text += f'''
+        ------------------------------------------------------
+        Joint Gap fill RMSE  : {avg_rmse}
+        Joint Gap fill % RMSE: {avg_rmse_perc}
+        '''
+
+        return self
+
+    def pre_fill_uneven_timeseries(self,
+                                   L_values: list[int],
+                                   dt: float,
+                                   gap_threshold: float,
+                                   eps_values: list[float] = None,
+                                   interp_method: str = 'cubic',
+                                   optimization_metric: str = 'rmse',
+                                   r2_warning_threshold: float = 0.5,
+                                   plot: bool = True,
+                                   **kwargs):
+        '''
+        Multivariate implementation of uneven gap filling. Iterates over each channel
+        independently to fill gaps using univariate uneven gap filling.
+        '''
+        from pycissa.preprocessing.gap_fill.uneven_gap_filling import fill_uneven_timeseries
+        import warnings
+
+        M = self.x.shape[1]
+        t_uneven = self.t.copy()
+
+        best_L_list = []
+        best_eps_list = []
+        rmse_list = []
+        r2_list = []
+        ccc_list = []
+
+        # Will replace self.t with the even grid and self.x with filled values
+        t_even_final = None
+        x_even_filled_full = None
+
+        for m in range(M):
+            x_m = self.x[:, m]
+
+            # If all nan, skip gracefully
+            if np.all(np.isnan(x_m)):
+                continue
+
+            res = fill_uneven_timeseries(t=t_uneven, x=x_m, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                        eps_values=eps_values, interp_method=interp_method,
+                                        optimization_metric=optimization_metric,
+                                        r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
+
+            if t_even_final is None:
+                t_even_final = res['t_even']
+                x_even_filled_full = np.zeros((len(t_even_final), M))
+
+            x_even_filled_full[:, m] = res['x_even_filled']
+
+            best_L_list.append(res['best_L'])
+            best_eps_list.append(res['best_eps'])
+            rmse_list.append(res['rmse'])
+            r2_list.append(res['r2'])
+            ccc_list.append(res['ccc'])
+
+            if plot and 'fig' in res:
+                if 'mcissa' not in self.figures:
+                    self.figures['mcissa'] = {}
+                if 'figure_uneven_gap_fill' not in self.figures['mcissa']:
+                    self.figures['mcissa']['figure_uneven_gap_fill'] = []
+                self.figures['mcissa']['figure_uneven_gap_fill'].append(res['fig'])
+
+        self.t = t_even_final
+        self.x = x_even_filled_full
+
+        from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+        self.isnan = detect_nan_data(self.x)
+
+        self.uneven_gap_fill_best_L = best_L_list
+        self.uneven_gap_fill_rmse = rmse_list
+        self.uneven_gap_fill_r2 = r2_list
+
+        self.information_text += f'''
+        ------------------------------------------------------
+        Uneven gap fill average RMSE across channels: {np.nanmean(rmse_list)}
+        Uneven gap fill average R2 across channels: {np.nanmean(r2_list)}
+        '''
+
+        return self
+
+    def auto_fix_censoring_nan(self,L : int,**kwargs):
+        '''
+        Function to automatically fix any censoring or nan values in the data.
+
+        Parameters
+        ----------
+        L : int
+            DESCRIPTION: CiSSA window length.
+        **kwargs : dict
+            DESCRIPTION. key word arguments for the pre_fix_censored_data() and pre_fill_gaps() functions.
+        '''
+        import warnings
+        import numpy as np
+
+        #check for censored, nan data
+        if self.censored:
+            warnings.warn("Censored data detected. Running pre_fix_censored_data to fix...")
+            _ = self.pre_fix_censored_data(
+                                     replace_type        = kwargs.get('replace_type','raw'),
+                                     lower_multiplier    = kwargs.get('lower_multiplier',0.5),
+                                     upper_multiplier    = kwargs.get('upper_multiplier',1.1),
+                                     default_value_lower = kwargs.get('default_value_lower',0.),
+                                     default_value_upper = kwargs.get('default_value_upper',0.),
+                                     hicensor_lower      = kwargs.get('hicensor_lower',False),
+                                     hicensor_upper      = kwargs.get('hicensor_upper',False),
+                                     )
+
+        if self.isnan:
+            warnings.warn("NaN data detected. Running pre_fill_gaps to fix...")
+            from pycissa.utilities.helper_functions import get_keyword_args
+            keys_to_remove = get_keyword_args(self.pre_fill_gaps)
+            temp_kwargs = {key: value for key, value in kwargs.items() if key not in keys_to_remove}
+            convergence_ = ['value', 0.01 * np.nanmin(self.x)]
+            _ = self.pre_fill_gaps(
+                          L,
+                          convergence                = kwargs.get('convergence',convergence_),
+                          extension_type             = kwargs.get('extension_type','AR_LR'),
+                          multi_thread_run           = kwargs.get('multi_thread_run',True),
+                          initial_guess              = kwargs.get('initial_guess',['previous', 1]),
+                          outliers                   = kwargs.get('outliers',['nan_only',None]),
+                          estimate_error             = kwargs.get('estimate_error',True),
+                          test_number                = kwargs.get('test_number',10),
+                          test_repeats               = kwargs.get('test_repeats',1),
+                          z_value                    = kwargs.get('z_value',1.96),
+                          component_selection_method = kwargs.get('component_selection_method','drop_smallest_n'), # Modified to drop_smallest_n to match M-CiSSA logic easier initially
+                          eigenvalue_proportion      = kwargs.get('eigenvalue_proportion',0.95),
+                          number_of_groups_to_drop   = kwargs.get('number_of_groups_to_drop',1),
+                          data_per_unit_period       = kwargs.get('data_per_unit_period',1),
+                          use_cissa_overlap          = kwargs.get('use_cissa_overlap',False),
+                          drop_points_from           = kwargs.get('drop_points_from','Left'),
+                          max_iter                   = kwargs.get('max_iter',50),
+                          verbose                    = kwargs.get('verbose',False),
+                          alpha                      = kwargs.get('alpha', 0.05),
+                          **temp_kwargs,
+                          )
+        return self
+
     def fit(self, L: int, extension_type: str = 'AR_LR', extend_left: bool = True, extend_right: bool = True):
         """
         Function to fit M-CiSSA to a multivariate timeseries.

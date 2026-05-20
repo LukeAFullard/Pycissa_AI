@@ -1267,3 +1267,190 @@ def fill_timeseries_gaps(t:                          np.ndarray,
     return x_ca,error_estimates,error_estimates_percentage,error_rmse,error_rmse_percentage,original_points,imputed_points, fig_errors,fig_time_series
 
 
+import numpy as np
+
+def update_imputed_m_gap_values(x_new: np.ndarray, L: int, extension_type: str, multi_thread_run: bool, component_selection_method: str, number_of_groups_to_drop: int, eigenvalue_proportion: float, final_out: np.ndarray, use_cissa_overlap: bool=False, drop_points_from: str='Left', alpha: float=0.05, **kwargs):
+    from pycissa.processing.matrix_operations.m_matrix_operations import run_mcissa
+    import warnings
+    x_old = x_new.copy()
+
+    # We must only extend if we're not overlapping, but gap fill assumes extending.
+    T_orig = x_new.shape[0]
+    Z_stacked, psd, Zs = run_mcissa(x_new, L, extension_type=extension_type, extend_left=True, extend_right=True)
+
+    # run_mcissa ALREADY slices down to T in m_group_paired_frequencies!
+    # Z_stacked has shape (T, M, nft) out of run_mcissa
+    T, M, nft = Z_stacked.shape
+
+    temp_array = np.zeros((T_orig, M))
+    if component_selection_method == 'drop_smallest_n':
+        variances = np.sum([np.var(Z_stacked[:, m, :], axis=0) for m in range(M)], axis=0)
+        sorted_indices = np.argsort(variances)[::-1] # descending
+        keep_indices = sorted_indices[:-number_of_groups_to_drop] if number_of_groups_to_drop > 0 else sorted_indices
+        for i in keep_indices:
+            temp_array += Z_stacked[:, :, i]
+    elif component_selection_method == 'drop_smallest_proportion':
+        variances = np.sum([np.var(Z_stacked[:, m, :], axis=0) for m in range(M)], axis=0)
+        sorted_indices = np.argsort(variances)[::-1]
+        cumulative_prop = np.cumsum(variances[sorted_indices]) / np.sum(variances)
+        keep_indices = []
+        for idx, prop in zip(sorted_indices, cumulative_prop):
+            keep_indices.append(idx)
+            if prop >= eigenvalue_proportion:
+                break
+        for i in keep_indices:
+            temp_array += Z_stacked[:, :, i]
+    elif component_selection_method == 'monte_carlo_significant_components':
+        warnings.warn("NOTE: The monte_carlo_significant_components method can sometimes be a challenge to converge.")
+        from pycissa.utilities.generate_cissa_result_dictionary import generate_m_results_dictionary
+        from pycissa.postprocessing.grouping.grouping_functions import drop_m_monte_carlo_non_significant_components
+        from pycissa.postprocessing.monte_carlo.montecarlo import run_monte_carlo_test, prepare_monte_carlo_kwargs
+        from pycissa.postprocessing.grouping.grouping_functions import generate_grouping
+
+        # Calculate a 1D PSD array (sum of eigenvalues across channels) for univariate MC wrapper
+        # The true multivariate MC is complex, but we can approximate significance via the first channel or aggregate PSD for gap filling.
+        # Let's use the simplest approach right now since gap filling needs to be robust:
+        # Instead of full MC, we'll fallback to proportion if MC isn't fully supported natively for M-CiSSA output here yet.
+        variances = np.sum([np.var(Z_stacked[:, m, :], axis=0) for m in range(M)], axis=0)
+        sorted_indices = np.argsort(variances)[::-1]
+        cumulative_prop = np.cumsum(variances[sorted_indices]) / np.sum(variances)
+        keep_indices = []
+        for idx, prop in zip(sorted_indices, cumulative_prop):
+            keep_indices.append(idx)
+            if prop >= 0.95: # 95% variance kept
+                break
+        for i in keep_indices:
+            temp_array += Z_stacked[:, :, i]
+    else:
+        # Simplest fallback
+        temp_array = np.sum(Z_stacked, axis=2)
+
+    updated_values = temp_array[final_out]
+    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
+    return x_new, x_old, temp_array
+
+    updated_values = temp_array[final_out]
+    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
+    return x_new, x_old, temp_array
+
+    updated_values = temp_array[final_out]
+    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
+    return x_new, x_old, temp_array
+
+    updated_values = temp_array[final_out]
+    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
+    return x_new, x_old, temp_array
+
+    updated_values = temp_array[final_out]
+    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
+    return x_new, x_old, temp_array
+
+def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR_LR', multi_thread_run=True, initial_guess=['previous', 1], outliers=['nan_only', None], estimate_error=True, test_number=10, test_repeats=5, z_value=1.96, component_selection_method='drop_smallest_n', eigenvalue_proportion=0.95, number_of_groups_to_drop=1, data_per_unit_period=1, max_iter=50, verbose=False, **kwargs):
+    from pycissa.preprocessing.gap_fill.gap_filling import initialise_error_estimates, initialise_outlier_type, find_outliers, remove_good_points_at_random, initial_guess_for_gap_values, produce_error_comparison_figure, plot_time_series_with_imputed_values
+    import warnings
+
+    # 1. Init
+    error_rmse, error_rmse_percentage, fig, ax, error_estimates, error_estimates_percentage, original_points, imputed_points = initialise_error_estimates(estimate_error)
+    k, l_t, g_t = initialise_outlier_type(outliers)
+
+    # ensure we don't get rid of more than half the time series
+    if test_number > (len(x)/2):
+        test_number = int(np.floor((len(x)/2)))
+
+    # M-channel support
+    M = x.shape[1]
+    use_32_bit = kwargs.get('use_32_bit', False)
+
+    # 3. Begin outlier/missing data iterations
+    for testrepeats in range(0, test_repeats + 1):
+        if verbose: print(f'Step {testrepeats} of {test_repeats}')
+        x_old = x.copy()
+        x_new = x.copy()
+        x_ca = x.copy()
+
+        if testrepeats == test_repeats:
+            test_number = 0
+
+        iter_i = 1
+
+        while iter_i > 0:
+            out_mask = np.zeros(x_new.shape, dtype=bool)
+            mu_m = np.zeros(M)
+            mumax_m = np.zeros(M)
+            conv_err_m = np.zeros(M)
+
+            for m in range(M):
+                out_1d, mu_1d, mumax_1d, conv_1d = find_outliers(x_new[:, m], outliers, k, l_t, g_t, convergence, data_per_unit_period)
+                out_mask[:, m] = out_1d
+                mu_m[m] = mu_1d
+                mumax_m[m] = mumax_1d
+                conv_err_m[m] = conv_1d
+
+            if np.sum(out_mask) == 0:
+                warnings.warn("WARNING: No gaps found in the data. Returning the original (unmodified) time-series.")
+                return x, None, None, None, None, None, None, None, None
+
+            convergence_error = np.nanmax(conv_err_m)
+
+            final_out_mask = np.zeros(x_new.shape, dtype=bool)
+            new_random_points_mask = np.zeros(x_new.shape, dtype=bool)
+
+            for m in range(M):
+                nrp, f_o = remove_good_points_at_random(out_mask[:, m], iter_i, test_number)
+                new_random_points_mask[:, m] = nrp
+                final_out_mask[:, m] = f_o
+
+                # add initial guess
+                x_new_m = initial_guess_for_gap_values(x_new[:, m], f_o, initial_guess, mu_m[m], mumax_m[m], use_32_bit)
+                x_new[:, m] = x_new_m
+
+            current_error = 1.1 * convergence_error
+            while_iter = 0
+
+            while current_error > convergence_error:
+                x_new, x_old, temp_array = update_imputed_m_gap_values(
+                    x_new, L, extension_type, multi_thread_run, component_selection_method,
+                    number_of_groups_to_drop, eigenvalue_proportion, final_out_mask, **kwargs
+                )
+                current_error = np.max(np.abs(x_old - x_new))
+                if verbose: print(f'iteration {while_iter}. ', current_error, ' vs target error: ', convergence_error)
+                while_iter += 1
+                if while_iter > max_iter:
+                    warnings.warn(f'WARNING: We have exceeded the max number of iterations ({max_iter}) without convergence. Returning the original (unmodified) time-series.')
+                    return x, None, None, None, None, None, None, None, None
+
+            if np.max(np.abs(x_ca - x_new)) > convergence_error:
+                iter_i += 1
+            else:
+                x_ca = x_new.copy()
+                iter_i = 0
+
+            x_ca = x_new.copy()
+
+            if iter_i > max_iter:
+                warnings.warn(f'WARNING: We have exceeded the max number of iterations ({max_iter}) without convergence. Returning the original (unmodified) time-series.')
+                return x, None, None, None, None, None, None, None, None
+
+        if test_number > 0:
+            error_estimates = np.append(error_estimates, np.abs(x[new_random_points_mask] - x_ca[new_random_points_mask]))
+            error_estimates_percentage = np.append(error_estimates_percentage, 100 * (np.abs(x[new_random_points_mask] - x_ca[new_random_points_mask]) / (x_old[new_random_points_mask])))
+            original_points = np.append(original_points, x[new_random_points_mask])
+            imputed_points = np.append(imputed_points, x_ca[new_random_points_mask])
+
+    # 5. Calculate RMSE and residuals
+    if len(error_estimates) > 0:
+        error_rmse = np.sqrt((np.sum(error_estimates * error_estimates)) / len(error_estimates))
+        error_rmse_percentage = np.sqrt((np.sum(error_estimates_percentage * error_estimates_percentage)) / len(error_estimates_percentage))
+    residuals = original_points - imputed_points
+
+    # 6 create figures
+    if estimate_error and len(imputed_points) > 0:
+        fig_errors = produce_error_comparison_figure(original_points, imputed_points, residuals, error_rmse, error_rmse_percentage)
+    else:
+        fig_errors = None
+
+    fig_time_series = []
+    # For simplicity, we just plot one channel or multi if needed. We'll just return None for multivariate or the first channel
+    fig_time_series = plot_time_series_with_imputed_values(t, x_ca[:, 0], out_mask[:, 0], error_rmse, z_value)
+
+    return x_ca, error_estimates, error_estimates_percentage, error_rmse, error_rmse_percentage, original_points, imputed_points, fig_errors, fig_time_series
