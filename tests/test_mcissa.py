@@ -271,3 +271,32 @@ def test_mcissa_zero_contribution_signal():
     # Max amplitude should be tiny compared to the main signals
     assert np.max(np.abs(indep_comp_in_x1)) < 0.2
     assert np.max(np.abs(indep_comp_in_x2)) < 0.2
+
+def test_mcissa_censored_init_and_fix():
+    t = np.arange(4)
+    x = np.array([['<1', 2], ['>3', 4], [5, 6], [7, 8]], dtype=object)
+
+    with pytest.warns(UserWarning, match="WARNING: Censored data detected. Please run pre_fix_censored_data before fitting."):
+        mcissa = MCissa(t, x)
+
+    assert mcissa.censored == True
+    assert mcissa.isnan == False
+
+    mcissa.pre_fix_censored_data(replace_type='raw')
+    assert mcissa.censored == False
+
+    expected_x = np.array([[1., 2.], [3., 4.], [5., 6.], [7., 8.]])
+    np.testing.assert_array_equal(mcissa.x, expected_x)
+
+    mcissa.restore_original_data()
+    assert mcissa.censored == True
+
+def test_mcissa_nan_init():
+    t = np.arange(4)
+    x = np.array([[np.nan, 2], [3, 4], [5, 6], [7, 8]], dtype=float)
+
+    with pytest.warns(UserWarning, match="WARNING: nan data detected. Please run pre_fill_gaps before fitting."):
+        mcissa = MCissa(t, x)
+
+    assert mcissa.isnan == True
+    assert mcissa.censored == False
