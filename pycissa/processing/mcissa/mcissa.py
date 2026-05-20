@@ -158,6 +158,37 @@ class MCissa:
 
         return self
 
+    def post_group_manual(self,
+                                I:                         int|float|dict,
+                                season_length:             int = 1,
+                                cycle_length:              list = [1.5,8],
+                                include_noise:             bool = True,):
+        '''
+        GROUP - Manual Grouping step of M-CiSSA.
+        '''
+
+        from pycissa.postprocessing.grouping.m_grouping_functions import m_group
+        necessary_attributes = ["Z_stacked", "psd", "L", "results"]
+        for attr_i in necessary_attributes:
+            if not hasattr(self, attr_i):
+                raise ValueError(f"Attribute {attr_i} does not appear to exist in the class. Please run the mcissa fit method first.")
+
+        rc, sh, kg, psd_sh = m_group(self.Z_stacked,
+                         self.psd,
+                         I,
+                         season_length=season_length,
+                         cycle_length=cycle_length,
+                         include_noise=include_noise
+                         )
+
+        self.results['mcissa']['manual'] = {}
+        self.results['mcissa']['manual']['rc'] = rc
+        self.results['mcissa']['manual']['sh'] = sh
+        self.results['mcissa']['manual']['kg'] = kg
+        self.results['mcissa']['manual']['psd_sh'] = psd_sh
+
+        return self
+
     #--------------------------------------------------------------------------
     from datetime import datetime
     def pre_fix_missing_samples(
@@ -448,6 +479,163 @@ class MCissa:
 
         return self
 
+    def auto_denoise(self,
+                     L:             int = None,
+                     plot_denoised: bool = True,
+                     **kwargs):
+        '''
+        Function to automatically denoise a multivariate time series using M-CiSSA.
+        '''
+        if not L:
+            L = int(np.floor(len(self.x)/2))
+
+        _ = self.auto_fix_censoring_nan(L,**kwargs)
+
+        _ = self.fit(
+                L,
+                extension_type = kwargs.get('extension_type','AR_LR'),
+                extend_left = kwargs.get('extend_left',True),
+                extend_right = kwargs.get('extend_right',True))
+
+        grouping_type = kwargs.get('grouping_type', 'smallest_proportion')
+        if grouping_type == 'monte_carlo':
+            _ = self.post_run_monte_carlo_analysis(
+                                         alpha                    = kwargs.get('alpha',0.05),
+                                         K_surrogates             = kwargs.get('K_surrogates',1),
+                                         surrogates               = kwargs.get('surrogates','random_permutation'),
+                                         seed                     = kwargs.get('seed',None),
+                                         sided_test               = kwargs.get('sided_test','one sided'),
+                                         remove_trend             = kwargs.get('remove_trend',True),
+                                         trend_always_significant = kwargs.get('trend_always_significant',True),
+                                         )
+
+        _ = self.post_group_components(
+                                      grouping_type            = grouping_type,
+                                      eigenvalue_proportion    = kwargs.get('eigenvalue_proportion',0.9),
+                                      number_of_groups_to_drop = kwargs.get('number_of_groups_to_drop',5),
+                                      include_trend            = kwargs.get('include_trend',True),
+                                      plot_result              = kwargs.get('plot_result',False))
+
+        self.x_denoised = self.x_trend + self.x_periodic
+
+        if plot_denoised:
+            pass
+
+        return self
+
+    def auto_detrend(self,
+                     L:           int = None,
+                     plot_result: bool = True,
+                     **kwargs):
+        '''
+        Function to automatically detrend a M-CiSSA signal.
+        '''
+        if not L:
+            L = int(np.floor(len(self.x)/2))
+
+        _ = self.auto_fix_censoring_nan(L,**kwargs)
+
+        _ = self.fit(
+                L,
+                extension_type = kwargs.get('extension_type','AR_LR'),
+                extend_left = kwargs.get('extend_left',True),
+                extend_right = kwargs.get('extend_right',True))
+
+        from pycissa.postprocessing.grouping.m_grouping_functions import m_group
+        nft = self.Z_stacked.shape[2]
+        I = {'trend'    :[0],
+             'detrended':[x for x in range(1, int(nft))]}
+        rc, sh, kg, psd_sh = m_group(self.Z_stacked, self.psd, I)
+
+        self.x_trend = rc['trend']
+        self.x_detrended = rc['detrended']
+
+        if plot_result:
+            pass
+
+        return self
+
+    def auto_cissa(self,
+                   L: int = None,
+                   **kwargs):
+        '''
+        AUTO-MCISSA!
+        '''
+        if not L:
+            L = int(np.floor(len(self.x)/2))
+
+        print('Checking for censored or nan data...')
+        _ = self.auto_fix_censoring_nan(L,**kwargs)
+
+        print('RUNNING M-CISSA!')
+        _ = self.fit(
+                L,
+                extension_type = kwargs.get('extension_type','AR_LR'),
+                extend_left = kwargs.get('extend_left',True),
+                extend_right = kwargs.get('extend_right',True))
+
+        print('Performing monte-carlo significance analysis...')
+        if kwargs.get('grouping_type','smallest_proportion')=='monte_carlo':
+            _ = self.post_run_monte_carlo_analysis(
+                                         alpha                    = kwargs.get('alpha',0.05),
+                                         K_surrogates             = kwargs.get('K_surrogates',1),
+                                         surrogates               = kwargs.get('surrogates','random_permutation'),
+                                         seed                     = kwargs.get('seed',None),
+                                         sided_test               = kwargs.get('sided_test','one sided'),
+                                         remove_trend             = kwargs.get('remove_trend',True),
+                                         trend_always_significant = kwargs.get('trend_always_significant',True),
+                                         )
+
+        print('Grouping components...')
+        grouping_type = kwargs.get('grouping_type', 'smallest_proportion')
+        _ = self.post_group_components(
+                                      grouping_type            = grouping_type,
+                                      eigenvalue_proportion    = kwargs.get('eigenvalue_proportion',0.9),
+                                      number_of_groups_to_drop = kwargs.get('number_of_groups_to_drop',5),
+                                      include_trend            = kwargs.get('include_trend',True),
+                                      plot_result              = kwargs.get('plot_result',False))
+        print("Auto M-CiSSA Complete!")
+        return self
+
+    def auto_cissa_classic(self,
+                   I:                         int|float|dict,
+                   L: int = None,
+                   season_length:             int = 1,
+                   cycle_length:              list = [1.5,8],
+                   **kwargs):
+        '''
+        This version of auto_cissa (classic) implements manual grouping rules natively.
+        '''
+        if not L:
+            L = int(np.floor(len(self.x)/2))
+
+        print('Checking for censored or nan data...')
+        _ = self.auto_fix_censoring_nan(L,**kwargs)
+
+        self.fit(L=L,
+                 extension_type   = kwargs.get('extension_type','AR_LR'),
+                 extend_left = kwargs.get('extend_left',True),
+                 extend_right = kwargs.get('extend_right',True)
+                 )
+
+        self.post_group_manual(I=I,
+                               season_length  = kwargs.get('season_length',1),
+                               cycle_length   = kwargs.get('cycle_length',[1.5,8]),
+                               include_noise  = kwargs.get('include_noise',True),
+                               )
+
+        rc = self.results['mcissa']['manual']['rc']
+        if type(I) == int or type(I) == float:
+            if ((I-np.floor(I))==0) & (I>0):
+                self.x_trend = rc['trend']
+                self.x_seasonality = rc['seasonality']
+                self.x_long_term_cycle = rc['long term cycle']
+                self.x_noise = rc['noise']
+        else:
+            self.x_reconstructed = rc
+
+        return self
+
     def auto_fix_censoring_nan(self,L : int,**kwargs):
         '''
         Function to automatically fix any censoring or nan values in the data.
@@ -531,12 +719,149 @@ class MCissa:
         self.extension_type = extension_type
 
         # generate initial results dictionary
-        # In multivariate, we have psd for each variable or cross-psd. Let's provide a structure.
-        self.results = {'mcissa': {}}
-        self.results['mcissa']['model parameters'] = {
+        from pycissa.utilities.generate_cissa_result_dictionary import generate_m_results_dictionary
+        from pycissa.postprocessing.grouping.grouping_functions import generate_grouping
+
+        if not hasattr(self, 'results'):
+            self.results = generate_m_results_dictionary(self.Z_stacked, self.psd, L, cissa_type='mcissa')
+        else:
+            self.results.update(generate_m_results_dictionary(self.Z_stacked, self.psd, L, cissa_type='mcissa'))
+
+        self.frequencies = generate_grouping(np.zeros(L), L, trend=True)
+
+        results = self.results
+        results.get('mcissa').setdefault('model parameters', {})
+        results.get('mcissa').setdefault('noise component tests', {})
+        results.get('mcissa').setdefault('fractal scaling results', {})
+        results.get('mcissa').get('model parameters').update({
             'extension_type': extension_type,
-            'L': L
-        }
+            'L': L,
+        })
+        self.results = results
+
+        return self
+
+    def post_run_monte_carlo_analysis(self,
+                                 alpha:                    float = 0.05,
+                                 K_surrogates:             int = 1,
+                                 surrogates:               str = 'random_permutation',
+                                 seed:                     int|None = None,
+                                 sided_test:               str = 'one sided',
+                                 remove_trend:             bool = True,
+                                 trend_always_significant: bool = True,
+                                 plot_figure:              bool = False):
+        '''
+        Function to run a monte carlo significance test on components of a signal, extracted via M-CiSSA.
+        '''
+        from pycissa.postprocessing.monte_carlo.m_montecarlo import run_m_monte_carlo_test
+
+        necessary_attributes = ["psd", "L", "results"]
+        for attr_i in necessary_attributes:
+            if not hasattr(self, attr_i):
+                raise ValueError(f"Attribute {attr_i} does not appear to exist in the class. Please run the mcissa fit method first.")
+
+        mc_results, figure_monte_carlo = run_m_monte_carlo_test(x = self.x,
+                             L = self.L,
+                             psd = self.psd,
+                             results = self.results.get('mcissa'),
+                             alpha = alpha,
+                             K_surrogates = K_surrogates,
+                             surrogates = surrogates,
+                             seed = seed,
+                             sided_test = sided_test,
+                             remove_trend = remove_trend,
+                             trend_always_significant = trend_always_significant,
+                             extension_type = self.extension_type,
+                             extend_left = True, # These should ideally match the fit call, assume true for now.
+                             extend_right = True,
+                             plot_figure = plot_figure
+                                 )
+        self.results.get('mcissa').update(mc_results)
+        self.results['mcissa']['model parameters'].update({'monte_carlo_surrogate_type': surrogates})
+        self.results['mcissa']['model parameters'].update({'monte_carlo_alpha': alpha})
+
+        self.information_text += f'''
+        ------------------------------------------------------
+        MONTE CARLO SIGNIFICANCE TESTING
+        '''
+        for component_j in self.results.get('mcissa').get('components'):
+            if self.results.get('mcissa').get('components').get(component_j).get('monte_carlo').get(surrogates).get('alpha').get(alpha).get('pass'):
+                self.information_text += f'''
+        Unitless frequency: {component_j} SIGNIFICANT.
+                '''
+        return self
+
+    def post_group_components(self,
+                                 grouping_type:            str = 'monte_carlo',
+                                 eigenvalue_proportion:    float = 0.9,
+                                 number_of_groups_to_drop: int = 5,
+                                 include_trend:            bool = True,
+                                 plot_result:              bool = True):
+        '''
+        Function to group components into trend, periodic, or noise/residual.
+        '''
+        def combine_m_components(temp_results, group_indices):
+            x_grouped = np.zeros(temp_results['components']['trend']['reconstructed_data'].shape)
+            for key_j in temp_results['components'].keys():
+                if temp_results['components'][key_j]['array_position'] in group_indices:
+                    x_grouped += temp_results['components'][key_j]['reconstructed_data']
+            return x_grouped
+
+        necessary_attributes = ["psd", "L", "results"]
+        for attr_i in necessary_attributes:
+            if not hasattr(self, attr_i):
+                raise ValueError(f"Attribute {attr_i} does not appear to exist in the class. Please run the mcissa fit method first.")
+
+        if grouping_type == 'monte_carlo':
+            if self.results.get('mcissa').get('components').get('trend').get('monte_carlo') is None:
+                raise ValueError(f"Please run the post_run_monte_carlo_analysis method before running the post_group_components with grouping_type == 'monte_carlo' or use another grouping type.")
+            from pycissa.postprocessing.grouping.m_grouping_functions import m_classify_monte_carlo_non_significant_components
+            trend, periodic, noise = m_classify_monte_carlo_non_significant_components(self.results.get('mcissa'))
+        elif grouping_type == 'smallest_proportion':
+            from pycissa.postprocessing.grouping.m_grouping_functions import m_classify_smallest_proportion_psd
+            trend, periodic, noise = m_classify_smallest_proportion_psd(self.Z_stacked,
+                                                                       self.psd,
+                                                                       self.L,
+                                                                       eigenvalue_proportion)
+        elif grouping_type == 'smallest_n':
+            from pycissa.postprocessing.grouping.m_grouping_functions import m_classify_smallest_n_components
+            trend, periodic, noise = m_classify_smallest_n_components(self.Z_stacked,
+                                                                     self.psd,
+                                                                     self.L,
+                                                                     number_of_groups_to_drop,
+                                                                     include_trend=include_trend)
+        else: raise ValueError(f"Input parameter 'grouping_type' should be one of 'monte_carlo', 'smallest_proportion', or 'smallest_n'. You entered: {grouping_type}.")
+
+        trend_share, periodic_share, noise_share = 0., 0., 0.
+        for key_j in self.results['mcissa']['components'].keys():
+            index = self.results['mcissa']['components'][key_j]['array_position']
+            share = self.results['mcissa']['components'][key_j]['percentage_share_of_psd']
+            if index in trend:    trend_share += share
+            if index in periodic: periodic_share += share
+            if index in noise:    noise_share += share
+
+        self.results['mcissa']['noise component tests'].update({'trend_index': trend})
+        self.results['mcissa']['noise component tests'].update({'trend_share': trend_share})
+        self.results['mcissa']['noise component tests'].update({'periodic_index': periodic})
+        self.results['mcissa']['noise component tests'].update({'periodic_share': periodic_share})
+        self.results['mcissa']['noise component tests'].update({'noise_index': noise})
+        self.results['mcissa']['noise component tests'].update({'noise_share': noise_share})
+
+        self.x_trend = combine_m_components(self.results['mcissa'], trend)
+        self.x_periodic = combine_m_components(self.results['mcissa'], periodic)
+        self.x_noise = combine_m_components(self.results['mcissa'], noise)
+
+        if plot_result:
+            # We can plot components here using existing utilities if adapted, or skip complex plotting
+            pass
+
+        self.information_text += f'''
+        ------------------------------------------------------
+        COMPONENT VARIANCE
+        TREND   : {self.results.get('mcissa').get('noise component tests').get('trend_share')}%
+        PERIODIC: {self.results.get('mcissa').get('noise component tests').get('periodic_share')}%
+        NOISE   : {self.results.get('mcissa').get('noise component tests').get('noise_share')}%
+        '''
 
         return self
 

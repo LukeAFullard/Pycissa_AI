@@ -247,3 +247,29 @@ def run_mcissa(x: np.ndarray, L: int, extension_type: str = 'AR_LR', extend_left
     psd = D_array # shape (L, M)
 
     return Z_stacked, psd, Zs
+
+def run_mcissa_psd_step(x: np.ndarray, L: int, extension_type: str = 'AR_LR', extend_left: bool = True, extend_right: bool = True) -> np.ndarray:
+    """
+    Runs only the first part of M-CiSSA to get the psd. Used to speed up Monte Carlo simulations.
+    x: shape (T, M)
+    """
+    from pycissa.utilities.extendseries import extend_series
+    from pycissa.processing.matrix_operations.matrix_operations import define_left_and_right_extension_lengths
+
+    T, M = x.shape
+
+    left_ext, right_ext = define_left_and_right_extension_lengths(extension_type, T, L)
+    actual_left_ext = left_ext if extend_left else 0
+    actual_right_ext = right_ext if extend_right else 0
+
+    x_e = np.zeros((T + actual_left_ext + actual_right_ext, M))
+    for i in range(M):
+        extended_col = extend_series(x[:, [i]], extension_type, left_ext, right_ext, extend_left=extend_left, extend_right=extend_right)
+        x_e[:, i] = extended_col.flatten()
+
+    Gam = create_m_autocovariance(x_e, L, x_e.shape[0], M)
+    S, C = create_m_toeplitz_circulant(Gam, L, M)
+
+    V, D_list, D_array = m_cross_spectral_density_and_eigenvectors(C, L, M)
+
+    return D_array
