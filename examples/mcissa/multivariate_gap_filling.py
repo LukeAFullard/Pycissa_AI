@@ -33,7 +33,7 @@ for i in range(x_gaps.shape[1]):
     if np.any(np.isnan(x_gaps[:, i])):
         model_uni = Cissa(t, x_gaps[:, i].copy())
         # Use component selection to make sure it converges
-        model_uni.pre_fill_gaps(L=20, estimate_error=False, verbose=False, component_selection_method='drop_smallest_n', number_of_groups_to_drop=1)
+        model_uni.pre_fill_gaps(L=40, estimate_error=False, verbose=False, component_selection_method='drop_smallest_proportion', eigenvalue_proportion=0.9)
         x_uni_filled[:, i] = model_uni.x
     else:
         x_uni_filled[:, i] = x_gaps[:, i]
@@ -41,7 +41,7 @@ for i in range(x_gaps.shape[1]):
 # 2. Fill using Multivariate CiSSA jointly
 print("Running Multivariate Gap Filling...")
 model_multi = MCissa(t, x_gaps.copy())
-model_multi.pre_fill_gaps(L=20, estimate_error=False, verbose=False, component_selection_method='drop_smallest_n', number_of_groups_to_drop=1)
+model_multi.pre_fill_gaps(L=40, estimate_error=False, verbose=False, component_selection_method='drop_smallest_proportion', eigenvalue_proportion=0.9)
 x_multi_filled = model_multi.x
 
 # Calculate RMSE across the gap region

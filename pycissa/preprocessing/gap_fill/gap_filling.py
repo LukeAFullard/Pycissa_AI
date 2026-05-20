@@ -1329,22 +1329,6 @@ def update_imputed_m_gap_values(x_new: np.ndarray, L: int, extension_type: str, 
     x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
     return x_new, x_old, temp_array
 
-    updated_values = temp_array[final_out]
-    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
-    return x_new, x_old, temp_array
-
-    updated_values = temp_array[final_out]
-    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
-    return x_new, x_old, temp_array
-
-    updated_values = temp_array[final_out]
-    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
-    return x_new, x_old, temp_array
-
-    updated_values = temp_array[final_out]
-    x_new[final_out] = updated_values.reshape(x_new[final_out].shape)
-    return x_new, x_old, temp_array
-
 def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR_LR', multi_thread_run=True, initial_guess=['previous', 1], outliers=['nan_only', None], estimate_error=True, test_number=10, test_repeats=5, z_value=1.96, component_selection_method='drop_smallest_n', eigenvalue_proportion=0.95, number_of_groups_to_drop=1, data_per_unit_period=1, max_iter=50, verbose=False, **kwargs):
     from pycissa.preprocessing.gap_fill.gap_filling import initialise_error_estimates, initialise_outlier_type, find_outliers, remove_good_points_at_random, initial_guess_for_gap_values, produce_error_comparison_figure, plot_time_series_with_imputed_values
     import warnings
@@ -1390,7 +1374,7 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
                 warnings.warn("WARNING: No gaps found in the data. Returning the original (unmodified) time-series.")
                 return x, None, None, None, None, None, None, None, None
 
-            convergence_error = np.nanmax(conv_err_m)
+            convergence_error = np.abs(np.nanmax(conv_err_m))
 
             final_out_mask = np.zeros(x_new.shape, dtype=bool)
             new_random_points_mask = np.zeros(x_new.shape, dtype=bool)
@@ -1404,7 +1388,7 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
                 x_new_m = initial_guess_for_gap_values(x_new[:, m], f_o, initial_guess, mu_m[m], mumax_m[m], use_32_bit)
                 x_new[:, m] = x_new_m
 
-            current_error = 1.1 * convergence_error
+            current_error = convergence_error + 1.0
             while_iter = 0
 
             while current_error > convergence_error:
