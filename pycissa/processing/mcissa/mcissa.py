@@ -647,22 +647,40 @@ class MCissa:
         self.results['mcissa']['model parameters'].update({'monte_carlo_surrogate_type': surrogates})
         self.results['mcissa']['model parameters'].update({'monte_carlo_alpha': alpha})
 
-        influence_components = []
-        unique_components = []
+        variance_threshold = kwargs.get('variance_threshold', 0.25)
 
-        for component_j in self.results.get('mcissa').get('components'):
-            mc_pass = self.results.get('mcissa').get('components').get(component_j).get('monte_carlo').get(surrogates).get('alpha').get(alpha).get('pass')
-            array_pos = self.results.get('mcissa').get('components').get(component_j).get('array_position')
+        M = self.x.shape[1]
+        T_len = self.x.shape[0]
+        nft = self.Z_stacked.shape[2]
 
-            # If the component is significant in the reference channel, it is deemed an influence.
-            if mc_pass:
-                influence_components.append(array_pos)
-            else:
-                unique_components.append(array_pos)
+        self.x_cleaned = np.zeros(T_len)
+        self.x_influence = np.zeros(T_len)
 
-        # Reconstruct the cleaned main series using only the unique components
-        self.x_cleaned = np.sum(self.Z_stacked[:, main_index, unique_components], axis=1)
-        self.x_influence = np.sum(self.Z_stacked[:, main_index, influence_components], axis=1)
+        # M-CiSSA provides M subcomponents at every frequency.
+        # We drop the specific spatial eigenvectors (subcomponents) that are heavily driven by the references,
+        # allowing separation of sources sharing the exact same frequency!
+        for k in range(nft):
+            for m in range(M):
+                subcomp_power_main = np.var(self.Zs[main_index][:T_len, m, k])
+                subcomp_power_refs = np.sum([np.var(self.Zs[ref][:T_len, m, k]) for ref in reference_indices])
+                total_subcomp_power = subcomp_power_main + subcomp_power_refs
+
+                if total_subcomp_power > 0:
+                    p_ratio = subcomp_power_refs / total_subcomp_power
+                else:
+                    p_ratio = 0.0
+
+                # We optionally incorporate the Monte Carlo pass flag for frequency k.
+                mc_pass = False
+                for component_j in self.results.get('mcissa').get('components'):
+                    if self.results.get('mcissa').get('components').get(component_j).get('array_position') == k:
+                        mc_pass = self.results.get('mcissa').get('components').get(component_j).get('monte_carlo').get(surrogates).get('alpha').get(alpha).get('pass')
+                        break
+
+                if mc_pass or p_ratio > variance_threshold:
+                    self.x_influence += self.Zs[main_index][:T_len, m, k]
+                else:
+                    self.x_cleaned += self.Zs[main_index][:T_len, m, k]
 
         print("Auto Blind Source Separation Complete!")
         return self
