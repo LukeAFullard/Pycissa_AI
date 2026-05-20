@@ -206,3 +206,68 @@ def test_mcissa_complex_signal_extraction():
     assert matched_trend, "Failed to accurately extract the trend subsignal."
     assert matched_low, "Failed to accurately extract the low-frequency subsignal."
     assert matched_high, "Failed to accurately extract the high-frequency subsignal."
+
+def test_mcissa_zero_contribution_signal():
+    """
+    Test extraction where a new signal is introduced into MCISSA but it
+    does not share any characteristics (frequency/trend) with the main mixed signal.
+    It should not contribute to the extraction of the dominant target signals.
+    """
+    np.random.seed(42)
+    T = 200
+    L = 24
+    M = 3
+
+    t = np.arange(1, T + 1)
+
+    # Base target signals
+    trend = 0.05 * t
+    periodic = 2 * np.sin(2 * np.pi * t / 12)
+
+    # Mixed signal we want to analyze (e.g. Channel 1 and 2 share components)
+    x1 = trend + periodic + np.random.normal(0, 0.1, T)
+    x2 = trend + periodic * 1.5 + np.random.normal(0, 0.1, T)
+
+    # Totally independent signal (e.g. Channel 3)
+    # Different frequency and no trend
+    independent_periodic = 3 * np.sin(2 * np.pi * t / 7)
+    x3 = independent_periodic + np.random.normal(0, 0.1, T)
+
+    X = np.column_stack((x1, x2, x3))
+
+    mcissa = MCissa(t, X)
+    mcissa.fit(L=L, extension_type='NoExt')
+    Z_stacked = mcissa.Z_stacked
+
+    # We want to find the component corresponding to the independent periodic signal (period 7)
+    # and verify it has near-zero amplitude in the reconstructed channels 1 and 2.
+
+    # Group by variance and identify the component most correlated with independent_periodic
+    variances = [np.sum([np.var(Z_stacked[:, m, i]) for m in range(M)]) for i in range(Z_stacked.shape[2])]
+    sorted_indices = np.argsort(variances)[::-1]
+
+    best_corr = 0
+    indep_comp_idx = -1
+    for idx in sorted_indices[:5]:
+        comp_x3 = Z_stacked[:, 2, idx] # Check correlation with the independent signal channel
+        corr = abs(np.corrcoef(comp_x3, independent_periodic)[0, 1])
+        if corr > best_corr:
+            best_corr = corr
+            indep_comp_idx = idx
+
+    # If the frequency is spread out, check combinations. The dominant period often combines frequencies.
+    # We can check the correlation of combined components in case it split.
+    combined_comp = Z_stacked[:, 2, sorted_indices[2]] + Z_stacked[:, 2, sorted_indices[3]] + Z_stacked[:, 2, sorted_indices[4]]
+    combined_corr = abs(np.corrcoef(combined_comp, independent_periodic)[0, 1])
+
+    best_corr = max(best_corr, combined_corr)
+
+    assert best_corr > 0.95, "Failed to isolate the independent signal component."
+
+    # The contribution of this independent component to Channel 1 and 2 should be virtually zero
+    indep_comp_in_x1 = Z_stacked[:, 0, indep_comp_idx]
+    indep_comp_in_x2 = Z_stacked[:, 1, indep_comp_idx]
+
+    # Max amplitude should be tiny compared to the main signals
+    assert np.max(np.abs(indep_comp_in_x1)) < 0.2
+    assert np.max(np.abs(indep_comp_in_x2)) < 0.2
