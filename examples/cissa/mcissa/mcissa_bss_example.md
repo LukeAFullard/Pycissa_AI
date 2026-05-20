@@ -93,3 +93,48 @@ Max extraction error for s3: 0.10245922430854404
 ## Results
 
 When you run the script, it produces `mcissa_bss_extraction.png`. The output demonstrates that M-CiSSA successfully utilized the cross-variable relationships to filter out the known signals and cleanly extract the hidden $s_3$ signal with only minor boundary errors (maximum error ~0.1 on a signal with amplitude 1.5).
+## Handling Weighted and Partial Signals
+
+A common question is: *What happens if the reference signals appear in the mixed channel with different amplitudes (weights)? What if a reference channel contains a signal that isn't in the mixed channel at all?*
+
+Because M-CiSSA relies on cross-covariance between variables, it naturally handles linear scalar weights. The components simply scale proportionally across the spatial/variable eigenvectors. Furthermore, if a component only exists in a reference channel but not in the mixed channel, M-CiSSA will assign a spatial eigenvector weight of `0` to the mixed channel, perfectly isolating the "distractor" signal.
+
+You can run the secondary example to verify this:
+
+```bash
+python run_mcissa_weighted_bss_example.py
+```
+
+### The Weighted Scenario
+
+In this example, we generate the same $s_1$, $s_2$, and $s_3$ signals, but we introduce a new distractor signal $s_4$:
+
+```python
+# 1. Generate independent pure signals
+s1 = np.linspace(0, 10, N)  # Trend
+s2 = 3.0 * np.sin(2 * np.pi * t / 20)  # Low freq oscillation
+s3 = 1.5 * np.sin(2 * np.pi * t / 5)   # High freq oscillation (Target to extract)
+
+# 2. Generate a signal that ONLY exists in the reference, not the mixed channel
+s4 = 2.0 * np.sin(2 * np.pi * t / 11)  # Mid freq oscillation
+```
+
+We then mix them using different scalar weights, and intentionally "pollute" Reference 1 with the distractor signal $s_4$:
+
+```python
+# The mixed channel contains s1 and s2 with different weights, plus our target s3.
+# It does NOT contain s4.
+mixed = 0.5 * s1 + 2.0 * s2 + 1.0 * s3
+
+# Reference 1 contains s1, plus the distractor signal s4.
+ref1 = s1 + s4
+
+# Reference 2 is just s2.
+ref2 = s2
+
+X = np.column_stack((mixed, ref1, ref2))
+```
+
+### Result
+
+When you run the script, it produces `mcissa_weighted_bss_extraction.png`. The output demonstrates that M-CiSSA still successfully recovers the hidden $s_3$ target signal. The maximum extraction error remains effectively unchanged (~0.1). The differing scalar weights (`0.5` and `2.0`) did not disrupt the extraction, and the presence of the distractor signal ($s_4$) in the reference channel did not "leak" into the target channel.
