@@ -2,6 +2,8 @@
 
 This example demonstrates how to use the `MCissa` class to analyze and decompose multivariate time series data. We generate a synthetic dataset with three variables, each composed of a trend, a low-frequency oscillation, and a high-frequency oscillation.
 
+To create a challenging scenario demonstrating the power of the method, the frequency components are shared across the variables, but with different amplitudes and phases.
+
 ## Running the Example
 
 To run the verification script, execute the following from this directory:
@@ -29,17 +31,17 @@ trend_1 = np.linspace(0, 15, N)
 trend_2 = np.linspace(0, -5, N)
 sub_trend = np.column_stack((trend_0, trend_1, trend_2))
 
-# 2. Low Frequency Oscillation
+# 2. Low Frequency Oscillation (Shared frequency, different amplitudes and phases)
 t = np.arange(N)
-low_freq_0 = 2.0 * np.sin(2 * np.pi * t / 50)
-low_freq_1 = 3.0 * np.sin(2 * np.pi * t / 20)
-low_freq_2 = 1.0 * np.sin(2 * np.pi * t / 80)
+low_freq_0 = 2.0 * np.sin(2 * np.pi * t / 50 + 0.0)
+low_freq_1 = 3.0 * np.sin(2 * np.pi * t / 50 + np.pi / 4)
+low_freq_2 = 1.0 * np.sin(2 * np.pi * t / 50 + np.pi / 2)
 sub_low = np.column_stack((low_freq_0, low_freq_1, low_freq_2))
 
-# 3. High Frequency Oscillation
-high_freq_0 = 0.5 * np.sin(2 * np.pi * t / 5)
-high_freq_1 = 1.3 * np.sin(2 * np.pi * t / 7)
-high_freq_2 = 0.8 * np.sin(2 * np.pi * t / 3)
+# 3. High Frequency Oscillation (Shared frequency, different amplitudes and phases)
+high_freq_0 = 0.5 * np.sin(2 * np.pi * t / 5 + 0.0)
+high_freq_1 = 1.3 * np.sin(2 * np.pi * t / 5 + np.pi / 3)
+high_freq_2 = 0.8 * np.sin(2 * np.pi * t / 5 + np.pi / 1.5)
 sub_high = np.column_stack((high_freq_0, high_freq_1, high_freq_2))
 
 # Combine signals
