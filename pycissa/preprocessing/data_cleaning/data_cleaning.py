@@ -335,7 +335,10 @@ def _fix_missing_date_samples(t: np.ndarray,
                     all_x.append(x_i)
                     x_missing.append(None)
                 else:
-                    all_x.append(missing_value)
+                    if isinstance(x_i, np.ndarray) and x_i.ndim > 0:
+                        all_x.append(np.full_like(x_i, missing_value, dtype=np.float64))
+                    else:
+                        all_x.append(missing_value)
                     x_missing.append(True)
                 current_date = add_date_delta(current_date,years,months,days,hours,minutes,seconds,'add')
                 lower_date = add_date_delta(current_date,year_delta,month_delta,day_delta,hour_delta,minute_delta,second_delta,'subtract')
@@ -433,7 +436,10 @@ def _fix_missing_numeric_samples(t: np.ndarray,
                     all_x.append(x_i)
                     x_missing.append(None)
                 else:
-                    all_x.append(missing_value)
+                    if isinstance(x_i, np.ndarray) and x_i.ndim > 0:
+                        all_x.append(np.full_like(x_i, missing_value, dtype=np.float64))
+                    else:
+                        all_x.append(missing_value)
                     x_missing.append(True)
                 current_t = add_date_delta(current_t,t_step,'add')
                 lower_t = add_date_delta(current_t,wiggleroom,'subtract')
