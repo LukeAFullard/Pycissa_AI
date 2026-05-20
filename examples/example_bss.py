@@ -7,24 +7,27 @@ from pycissa.processing.mcissa.mcissa import MCissa
 T = 300
 t = np.arange(T)
 
-# The "True" signal is a slow cycle
-true_signal = 5.0 * np.sin(2 * np.pi * t / 50.0)
+# The "True" signal is a slow cycle AND a shared frequency!
+# Note that we put the T=12 component in BOTH the true signal and the artifact,
+# just to show that MCissa spatial eigenvectors can separate them!
+true_signal = 5.0 * np.sin(2 * np.pi * t / 50.0) + 2.0 * np.sin(2 * np.pi * t / 12.0)
 
-# Random noise processes
-ref1 = np.random.randn(T) * 1.0
-ref2 = np.random.randn(T) * 1.0
+# Artifacts
+ref1 = 20.0 * np.sin(2 * np.pi * t / 12.0 + np.pi/4) # Same freq as signal part, but shifted/independent spatial source
+ref2 = 10.0 * np.sin(2 * np.pi * t / 5.0)
 
-# Add a massive artifact!
-artifact = 50.0 * np.sin(2 * np.pi * t / 12.0)
+# Contaminate main signal
+main_signal = true_signal + 1.0 * ref1 + 1.0 * ref2 + np.random.randn(T) * 1.0
 
-# Mix heavily into the main signal!
-main_signal = true_signal + 10.0 * ref1 + 5.0 * ref2 + artifact
-ref_channel_1 = ref1 + artifact
+# Mix into references
+ref_channel_1 = ref1 + np.random.randn(T) * 0.5
+ref_channel_2 = ref2 + np.random.randn(T) * 0.5
 
-X = np.column_stack([main_signal, ref_channel_1, ref2])
+X = np.column_stack([main_signal, ref_channel_1, ref_channel_2])
 mcissa = MCissa(t, X)
 
-mcissa.auto_blind_source_separation(L=60, main_index=0, K_surrogates=5, variance_threshold=0.01)
+# Using auto BSS based on Subcomponent variance checking!
+mcissa.auto_blind_source_separation(L=60, main_index=0, K_surrogates=5, variance_threshold=0.10)
 
 mse_original_to_true = np.mean((main_signal - true_signal)**2)
 mse_cleaned_to_true = np.mean((mcissa.x_cleaned - true_signal)**2)
@@ -42,7 +45,7 @@ plt.legend()
 
 plt.subplot(3, 1, 2)
 plt.title("Reference Channels (Artifacts)")
-plt.plot(t, ref_channel_1, label="Reference 1", color='orange')
+plt.plot(t, ref1, label="Reference 1", color='orange')
 plt.plot(t, ref2, label="Reference 2", color='red')
 plt.legend()
 
