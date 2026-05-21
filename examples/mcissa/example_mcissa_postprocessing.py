@@ -17,8 +17,10 @@ main_noise = np.random.normal(0, 0.5, T)
 x_main = trend + slow_cycle + main_noise
 
 # Reference channel 1: Contains the same slow cycle + noise
-ref_cycle = 1.5 * np.sin(2 * np.pi * t / 50 + np.pi/4) # phase shifted
-x_ref1 = ref_cycle + np.random.normal(0, 0.5, T)
+# PLUS a fast cycle that is highly significant in the reference, but totally absent in the main signal
+ref_cycle = 1.5 * np.sin(2 * np.pi * t / 50 + np.pi/4)
+fast_cycle_only_in_ref = 3.0 * np.sin(2 * np.pi * t / 10)
+x_ref1 = ref_cycle + fast_cycle_only_in_ref + np.random.normal(0, 0.5, T)
 
 # Combine into a 2D array: (T, M)
 x = np.column_stack([x_main, x_ref1])
@@ -87,11 +89,11 @@ fig_trend_after.savefig(os.path.join(os.path.dirname(__file__), 'mcissa_trend_af
 print("Generating plots comparing signals...")
 # Generate a summary plot of original vs BSS cleaned
 plt.figure(figsize=(10, 6))
-plt.plot(t, x_main, label='Original Main Signal (Trend + Cycle + Noise)', color='black', alpha=0.7)
-plt.plot(t, mcissa.x_cleaned, label='BSS Cleaned Main Signal (Cycle removed)', color='blue', linewidth=2)
+plt.plot(t, x_main, label='Original Main Signal (Trend + Slow Cycle + Noise)', color='black', alpha=0.7)
+plt.plot(t, mcissa.x_cleaned, label='BSS Cleaned Main Signal (Slow Cycle removed)', color='blue', linewidth=2)
 plt.plot(t, trend, label='Underlying Ground Truth Trend', color='red', linestyle='dashed', linewidth=2)
 plt.legend()
-plt.title('Main Signal Before and After Blind Source Separation')
+plt.title('Main Signal Before and After Blind Source Separation\n(Note: Fast cycle in reference does not disturb main signal)')
 plt.xlabel('Time')
 plt.ylabel('Amplitude')
 plt.grid(True)

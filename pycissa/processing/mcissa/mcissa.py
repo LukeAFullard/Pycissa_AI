@@ -681,7 +681,7 @@ class MCissa:
                         mc_pass = mc_results.get('components').get(component_j).get('monte_carlo', {}).get(surrogates, {}).get('alpha', {}).get(alpha, {}).get('pass', False)
                         break
 
-                if mc_pass or p_ratio > variance_threshold:
+                if mc_pass and p_ratio > variance_threshold:
                     self.x_influence += self.Zs[main_index][:T_len, m, k]
                     self.x_influence_components[:, k] += self.Zs[main_index][:T_len, m, k]
                 else:
