@@ -4,7 +4,7 @@ This example demonstrates how to use the post-processing tools in Multivariate C
 
 ## Generating the Synthetic Data
 
-We generate a synthetic two-channel dataset. The main channel contains a linear trend, a slow oscillation cycle, and noise. The reference channel contains only the slow cycle (phase-shifted) and noise.
+We generate a synthetic two-channel dataset. The main channel contains a linear trend, a slow oscillation cycle, and noise. The reference channel contains the same slow cycle (phase-shifted), noise, **and a unique fast cycle**.
 
 ```python
 import numpy as np
@@ -23,8 +23,10 @@ main_noise = np.random.normal(0, 0.5, T)
 x_main = trend + slow_cycle + main_noise
 
 # Reference channel 1: Contains the same slow cycle + noise
+# PLUS a fast cycle that is highly significant in the reference, but totally absent in the main signal
 ref_cycle = 1.5 * np.sin(2 * np.pi * t / 50 + np.pi/4)
-x_ref1 = ref_cycle + np.random.normal(0, 0.5, T)
+fast_cycle_only_in_ref = 3.0 * np.sin(2 * np.pi * t / 10)
+x_ref1 = ref_cycle + fast_cycle_only_in_ref + np.random.normal(0, 0.5, T)
 
 # Combine into a 2D array: (T, M)
 x = np.column_stack([x_main, x_ref1])
@@ -72,7 +74,7 @@ The trend plot displays the combined trend structure (including the effect of th
 
 ## Applying Blind Source Separation
 
-We can use `auto_blind_source_separation` to filter out any signals in the main channel that are also significantly present in the reference channels. In this case, the BSS should identify the shared slow cycle and remove it from the main channel.
+We can use `auto_blind_source_separation` to filter out any signals in the main channel that are heavily driven by the reference channels. In this case, the BSS will identify the shared slow cycle and remove it from the main channel. Notice that because BSS respects M-CiSSA's spatial eigenvector separations, the highly significant fast cycle found exclusively in the reference channel is correctly identified as having 0 projection onto the main channel, preserving the main channel cleanly!
 
 ```python
 mcissa.auto_blind_source_separation(main_index=0, K_surrogates=1, alpha=0.05)
