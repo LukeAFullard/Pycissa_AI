@@ -637,13 +637,13 @@ class MCissa:
                              seed = kwargs.get('seed',None),
                              sided_test = kwargs.get('sided_test','one sided'),
                              remove_trend = kwargs.get('remove_trend',True),
-                             trend_always_significant = kwargs.get('trend_always_significant',True),
+                             trend_always_significant = kwargs.get('trend_always_significant',False),
                              extension_type = self.extension_type,
                              extend_left = True,
                              extend_right = True,
                                  )
 
-        self.results.get('mcissa').update(mc_results)
+
         self.results['mcissa']['model parameters'].update({'monte_carlo_surrogate_type': surrogates})
         self.results['mcissa']['model parameters'].update({'monte_carlo_alpha': alpha})
 
@@ -676,9 +676,9 @@ class MCissa:
 
                 # We optionally incorporate the Monte Carlo pass flag for frequency k.
                 mc_pass = False
-                for component_j in self.results.get('mcissa').get('components'):
-                    if self.results.get('mcissa').get('components').get(component_j).get('array_position') == k:
-                        mc_pass = self.results.get('mcissa').get('components').get(component_j).get('monte_carlo').get(surrogates).get('alpha').get(alpha).get('pass')
+                for component_j in mc_results.get('components', {}):
+                    if mc_results.get('components').get(component_j).get('array_position') == k:
+                        mc_pass = mc_results.get('components').get(component_j).get('monte_carlo', {}).get(surrogates, {}).get('alpha', {}).get(alpha, {}).get('pass', False)
                         break
 
                 if mc_pass or p_ratio > variance_threshold:
@@ -960,6 +960,7 @@ class MCissa:
                              extend_right = True,
                              plot_figure = plot_figure
                                  )
+
         self.results.get('mcissa').update(mc_results)
         self.results['mcissa']['model parameters'].update({'monte_carlo_surrogate_type': surrogates})
         self.results['mcissa']['model parameters'].update({'monte_carlo_alpha': alpha})
