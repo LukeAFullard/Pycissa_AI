@@ -101,3 +101,21 @@ plt.savefig(os.path.join(os.path.dirname(__file__), 'mcissa_bss_summary.png'), b
 plt.close()
 
 print("All examples generated successfully.")
+
+
+print("Generating error analysis plot...")
+expected_cleaned = trend + main_noise
+bss_error = mcissa.x_cleaned - expected_cleaned
+
+plt.figure(figsize=(10, 6))
+plt.plot(t, bss_error, label='BSS Error (Cleaned - Expected Cleaned)', color='purple', alpha=0.8)
+plt.axhline(0, color='black', linestyle='--')
+plt.title('BSS Error Analysis')
+plt.xlabel('Time')
+plt.ylabel('Error')
+plt.legend()
+plt.grid(True)
+plt.savefig(os.path.join(os.path.dirname(__file__), 'mcissa_bss_error.png'), bbox_inches='tight')
+plt.close()
+
+print("Error analysis plot generated successfully.")

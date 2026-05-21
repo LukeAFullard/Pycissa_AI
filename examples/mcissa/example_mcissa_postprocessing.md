@@ -116,3 +116,8 @@ The trend analysis on the cleaned signal reveals a much smoother, linear trend s
 
 We can compare the final reconstructed main signal with the original.
 ![BSS Summary Comparison](mcissa_bss_summary.png)
+
+### Error Analysis
+
+We calculate the error between the BSS cleaned signal and the theoretical "ground truth" cleaned signal (which is simply the original trend plus the original noise, as the BSS is expected to remove only the slow cycle).
+![BSS Error Analysis](mcissa_bss_error.png)
