@@ -656,6 +656,10 @@ class MCissa:
         self.x_cleaned = np.zeros(T_len)
         self.x_influence = np.zeros(T_len)
 
+        self.x_cleaned_components = np.zeros((T_len, nft))
+        self.x_influence_components = np.zeros((T_len, nft))
+        self.blind_source_separation_main_index = main_index
+
         # M-CiSSA provides M subcomponents at every frequency.
         # We drop the specific spatial eigenvectors (subcomponents) that are heavily driven by the references,
         # allowing separation of sources sharing the exact same frequency!
@@ -679,8 +683,10 @@ class MCissa:
 
                 if mc_pass or p_ratio > variance_threshold:
                     self.x_influence += self.Zs[main_index][:T_len, m, k]
+                    self.x_influence_components[:, k] += self.Zs[main_index][:T_len, m, k]
                 else:
                     self.x_cleaned += self.Zs[main_index][:T_len, m, k]
+                    self.x_cleaned_components[:, k] += self.Zs[main_index][:T_len, m, k]
 
         print("Auto Blind Source Separation Complete!")
         return self
@@ -829,6 +835,96 @@ class MCissa:
 
         return self
 
+
+    #--------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
+    def post_run_frequency_time_analysis(self,
+                                    data_per_period:    int,
+                                    channel_index:      int = 0,
+                                    use_cleaned:        bool = False,
+                                    period_name:        str = '',
+                                    t_unit:             str = '',
+                                    plot_frequency:     bool = True,
+                                    plot_period:        bool = True,
+                                    logplot_frequency:  bool = True,
+                                    logplot_period:     bool = False,
+                                    normalise_plots:    bool = False,
+                                    height_variable:    str = 'power',
+                                    height_unit:        str = '',):
+        '''
+        Function to generate frequency-time and period-time matrices and figures for M-CiSSA.
+        '''
+        from pycissa.postprocessing.frequency_time.frequency_time import _run_frequency_time_analysis
+
+        necessary_attributes = ["Z_stacked", "psd", "t", "L", "results"]
+        for attr_i in necessary_attributes:
+            if not hasattr(self, attr_i): raise ValueError(f"Attribute {attr_i} does not appear to exist in the class. Please run the fit method before running the run_frequency_time_analysis method.")
+
+        if use_cleaned:
+            if not hasattr(self, 'x_cleaned_components'):
+                raise ValueError("Attribute 'x_cleaned_components' not found. Run auto_blind_source_separation first.")
+            if channel_index != getattr(self, 'blind_source_separation_main_index', 0):
+                import warnings
+                warnings.warn(f"Warning: Using use_cleaned=True but channel_index ({channel_index}) differs from the main index used in BSS ({getattr(self, 'blind_source_separation_main_index', 0)}). Reverting to the BSS main index.")
+                channel_index = getattr(self, 'blind_source_separation_main_index', 0)
+
+            # Create a mock Z matrix that mimics the (T, nft) shape expected by the univariate _run_frequency_time_analysis
+            # Actually _run_frequency_time_analysis expects Z to be shape (T, nft) natively from CiSSA.
+            # `self.x_cleaned_components` has shape `(T, nft)`.
+            Z_to_use = self.x_cleaned_components
+        else:
+            # self.Z_stacked has shape (T, M, nft)
+            # We want to extract the components for the specific channel
+            Z_to_use = self.Z_stacked[:, channel_index, :]
+
+        # univariate _run_frequency_time_analysis expects psd to be a column vector, so we extract the relevant channel and reshape it
+        psd_to_use = self.psd[:, channel_index].reshape(-1, 1)
+        self.frequency_list, self.period_list, self.amplitude_matrix, self.power_matrix, self.phase_matrix, _, fig_f, fig_p = _run_frequency_time_analysis(
+            Z_to_use, psd_to_use, self.t, self.L,
+            data_per_period=data_per_period, period_name=period_name, t_unit=t_unit,
+            plot_frequency=plot_frequency, plot_period=plot_period,
+            logplot_frequency=logplot_frequency, logplot_period=logplot_period,
+            normalise_plots=normalise_plots, height_variable=height_variable, height_unit=height_unit
+        )
+
+        suffix = f"_channel_{channel_index}"
+        if use_cleaned:
+            suffix += "_cleaned"
+
+        if fig_f is not None:
+            self.figures.get('mcissa').update({f'figure_frequency_time{suffix}': fig_f})
+        if fig_p is not None:
+            self.figures.get('mcissa').update({f'figure_period_time{suffix}': fig_p})
+
+        results = self.results
+        if 'frequency_time_results' not in results.get('mcissa'):
+            results.get('mcissa')['frequency_time_results'] = {}
+
+        results.get('mcissa').get('frequency_time_results').update({
+            suffix: {
+                'frequency_list'   : self.frequency_list,
+                'period_list'      : self.period_list,
+                'amplitude_matrix' : self.amplitude_matrix,
+                'power_matrix'     : self.power_matrix,
+                'phase_matrix'     : self.phase_matrix,
+            }
+        })
+
+        results.get('mcissa').setdefault('model parameters', {})
+        results.get('mcissa').get('model parameters').update({
+            'data_per_period'   : data_per_period,
+            'period_name'       : period_name,
+            't_unit'            : t_unit,
+        })
+
+        self.results = results
+        self.data_per_period = data_per_period
+        self.period_name     = period_name
+        self.t_unit          = t_unit
+        if plt.get_fignums(): plt.close('all')
+
+        return self
+
     def post_run_monte_carlo_analysis(self,
                                  alpha:                    float = 0.05,
                                  K_surrogates:             int = 1,
@@ -877,6 +973,113 @@ class MCissa:
                 self.information_text += f'''
         Unitless frequency: {component_j} SIGNIFICANT.
                 '''
+        return self
+
+
+    #--------------------------------------------------------------------------
+    #--------------------------------------------------------------------------
+    def post_analyse_trend(self,
+                      channel_index:     int = 0,
+                      use_cleaned:       bool = False,
+                      trend_type:        str = 'rolling_OLS',
+                      t_unit:            str = '',
+                      data_unit:         str = '',
+                      alphas:            list = [x/20 for x in range(1,20)],
+                      timestep:          float|None = None,
+                      timestep_unit:     str = None,
+                      include_data:      bool = True,
+                      legend_loc:        int = 2,
+                      shade_area:        bool = True,
+                      xaxis_rotation:    float = 270,
+                      window:            int = 12
+                      ):
+        '''
+        Method to calculate and generate the trend slope and confidence for the "trend" component of the M-CiSSA results.
+        '''
+        necessary_attributes = ["t", "results"]
+        for attr_i in necessary_attributes:
+            if not hasattr(self, attr_i): raise ValueError(f"Attribute {attr_i} does not appear to exist in the class. Please run the fit method first.")
+
+        if use_cleaned:
+            if not hasattr(self, 'x_cleaned_components'):
+                raise ValueError("Attribute 'x_cleaned_components' not found. Run auto_blind_source_separation first.")
+            if channel_index != getattr(self, 'blind_source_separation_main_index', 0):
+                import warnings
+                warnings.warn(f"Warning: Using use_cleaned=True but channel_index ({channel_index}) differs from the main index used in BSS ({getattr(self, 'blind_source_separation_main_index', 0)}). Reverting to the BSS main index.")
+                channel_index = getattr(self, 'blind_source_separation_main_index', 0)
+
+            # Trend is usually at component array position 0
+            trend_idx = 0
+            for key_j in self.results['mcissa']['components'].keys():
+                if key_j == 'trend':
+                    trend_idx = self.results['mcissa']['components'][key_j].get('array_position', 0)
+                    break
+
+            # The univariate logic normally uses the reconstructed trend from components.
+            # In our case, self.x_cleaned_components[:, trend_idx] is the trend component
+            trend_data = self.x_cleaned_components[:, trend_idx]
+        else:
+            if not hasattr(self, 'x_trend'):
+                raise ValueError("Attribute 'x_trend' not found. Run post_group_components or auto_detrend first.")
+            trend_data = self.x_trend[:, channel_index]
+
+        suffix = f"_channel_{channel_index}"
+        if use_cleaned:
+            suffix += "_cleaned"
+
+        if trend_type == 'linear':
+            from pycissa.postprocessing.trend.trend_functions import trend_linear
+
+            figure_trend, self.trend_slope, self.trend_increasing_probability, self.trend_increasing_probability_text, self.trend_confidence = trend_linear(
+                             trend_data,
+                             self.t,
+                             t_unit=t_unit,
+                             Y_unit=data_unit,
+                             alphas=alphas,
+                             timestep=timestep,
+                             timestep_unit=timestep_unit,
+                             include_data=include_data,
+                             legend_loc=legend_loc,
+                             shade_area=shade_area,
+                             xaxis_rotation=xaxis_rotation
+                             )
+            self.trend_type = 'Linear'
+            self.figures.get('mcissa').update({f'figure_trend{suffix}': figure_trend})
+        elif trend_type == 'rolling_OLS':
+            from pycissa.postprocessing.trend.trend_functions import trend_rolling
+            figure_trend, self.trend_slope, self.trend_increasing_probability, self.trend_increasing_probability_text, self.trend_confidence = trend_rolling(
+                              trend_data,
+                              self.t,
+                              t_unit=t_unit,
+                              Y_unit=data_unit,
+                              window=window,
+                              alphas=alphas,
+                              timestep=timestep,
+                              timestep_unit=timestep_unit,
+                              include_data=include_data,
+                              legend_loc=legend_loc,
+                              shade_area=shade_area,
+                              xaxis_rotation=xaxis_rotation
+                              )
+            self.trend_type = 'rolling_OLS'
+            self.figures.get('mcissa').update({f'figure_trend{suffix}': figure_trend})
+        else:
+            raise ValueError(f"Input value trend_type = {trend_type} is incorrect. Please use one of 'linear' or 'rolling_OLS'.")
+
+        results = self.results
+        results.get('mcissa').setdefault('trend results', {})
+        if suffix not in results.get('mcissa').get('trend results'):
+            results.get('mcissa').get('trend results')[suffix] = {}
+
+        results.get('mcissa').get('trend results')[suffix].setdefault(self.trend_type, {})
+        results.get('mcissa').get('trend results')[suffix].get(self.trend_type).update({
+            'trend_slope'                       : self.trend_slope,
+            'trend_increasing_probability'      : self.trend_increasing_probability,
+            'trend_increasing_probability_text' : self.trend_increasing_probability_text,
+            'trend_confidence'                  : self.trend_confidence
+            })
+        self.results = results
+        if plt.get_fignums(): plt.close('all')
         return self
 
     def post_group_components(self,
