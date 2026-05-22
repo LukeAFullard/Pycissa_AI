@@ -37,13 +37,25 @@ def run_m_monte_carlo_reference_test(x: np.ndarray,
                            extend_right: bool = True
                            ) -> dict:
 
-    if sided_test == 'one sided':
-        number_of_surrogates = int(K_surrogates/alpha - 1)
-    elif sided_test == 'two sided':
-        number_of_surrogates = int(2*K_surrogates/alpha - 1)
-    else:raise ValueError(f"The parameter sided_test must be one of 'one sided' or 'two sided'. You entered '{sided_test}'")
+    if alpha >= 1.0:
+        number_of_surrogates = 0
+    else:
+        if sided_test == 'one sided':
+            number_of_surrogates = int(K_surrogates/alpha - 1)
+        elif sided_test == 'two sided':
+            number_of_surrogates = int(2*K_surrogates/alpha - 1)
+        else:raise ValueError(f"The parameter sided_test must be one of 'one sided' or 'two sided'. You entered '{sided_test}'")
 
     result = copy.deepcopy(results)
+
+    # If alpha >= 1.0, we can short circuit and mark all as passing
+    if alpha >= 1.0:
+        for results_key_j in result.get('components').keys():
+            result['components'][results_key_j].setdefault('monte_carlo', {})
+            result['components'][results_key_j]['monte_carlo'].setdefault(surrogates, {})
+            result['components'][results_key_j]['monte_carlo'][surrogates].setdefault('alpha', {})
+            result['components'][results_key_j]['monte_carlo'][surrogates]['alpha'][alpha] = {'pass': True}
+        return result
     x_copy = copy.deepcopy(x)
     if remove_trend:
         x_copy -= result.get('components').get('trend').get('reconstructed_data').reshape(x_copy.shape)
