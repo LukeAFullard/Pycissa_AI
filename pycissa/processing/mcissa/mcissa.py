@@ -191,6 +191,21 @@ class MCissa:
 
     #--------------------------------------------------------------------------
     from datetime import datetime
+    def plot_original_time_series(self):
+        '''
+        Helper function to plot the original multivariate time series.
+        '''
+        from pycissa.utilities.plotting import plot_m_time_series
+        #----------------------------------------------------------------------
+        #ensure data is not uncensored or nan
+        if self.censored:  raise ValueError("Censored data detected. Please run pre_fix_censored_data before plot_original_time_series.")
+        if self.isnan: raise ValueError("WARNING: nan data detected. Please run pre_fill_gaps before plot_original_time_series.")
+        #----------------------------------------------------------------------
+        fig = plot_m_time_series(self.t, self.x)
+        self.figures['mcissa'].update({'figure_original_time_series': fig})
+        if plt.get_fignums(): plt.close('all')
+        return self
+
     def pre_fix_missing_samples(
             self,
             version:              str = 'date',
@@ -1155,6 +1170,63 @@ class MCissa:
         NOISE   : {self.results.get('mcissa').get('noise component tests').get('noise_share')}%
         '''
 
+        return self
+
+    def plot_seasonal_boxplots(self,
+                               split_date:    datetime|None = None,
+                               bar_width:     float = 0.25,
+                               plot_type:     str = 'both',
+                               remove_trend:  bool=False,
+                               include_noise: bool=True,):
+        '''
+        Function to plot seasonal (either monthly or yearly or both) boxplots for multivariate data.
+        Includes the option to split the data by a set date.
+
+        Parameters
+        ----------
+        split_date : datetime|None, optional
+            A datetime object which splits the boxplots into groups.
+        bar_width : float, optional
+            Width of each individual bar
+        plot_type : str, optional
+            One of 'both', 'monthly', or 'yearly', depending on the type of boxplot to be plotted.
+        remove_trend : bool, optional
+            If True, the trend is remove. If True, then we first must have run post_group_components.
+        include_noise : bool, optional
+            Only used if remove_trend = True. If False, the noise component is removed, leaving only the periodic component to be box-plotted.
+        '''
+        #----------------------------------------------------------------------
+        #ensure data is not uncensored or nan
+        if self.censored:  raise ValueError("Censored data detected. Please run pre_fix_censored_data before plot_seasonal_boxplots.")
+        if self.isnan: raise ValueError("WARNING: nan data detected. Please run pre_fill_gaps before plot_seasonal_boxplots.")
+        #----------------------------------------------------------------------
+
+        if plot_type in ['both','monthly']:
+            from pycissa.utilities.plotting import m_seasonal_boxplots
+            if remove_trend:
+                necessary_attributes = ["x_trend","x_periodic","x_noise"]
+                for attr_i in necessary_attributes:
+                    if not hasattr(self, attr_i): raise ValueError(f"Attribute {attr_i} does not appear to exist in the class. Please run the pycissa post_group_components method before running the plot_seasonal_boxplots method with remove_trend = True.")
+                if include_noise:x_plot = self.x_periodic + self.x_noise
+                else:x_plot = self.x_periodic
+            else:
+                x_plot = self.x
+            fig = m_seasonal_boxplots(self.t, x_plot, split_date=split_date, bar_width=bar_width)
+            self.figures.get('mcissa').update({'figure_monthly_seasonal_box':fig})
+
+        if plot_type in ['both','yearly']:
+            from pycissa.utilities.plotting import m_yearly_boxplots
+            if remove_trend:
+                necessary_attributes = ["x_trend","x_periodic","x_noise"]
+                for attr_i in necessary_attributes:
+                    if not hasattr(self, attr_i): raise ValueError(f"Attribute {attr_i} does not appear to exist in the class. Please run the pycissa post_group_components method before running the plot_seasonal_boxplots method with remove_trend = True.")
+                if include_noise:x_plot = self.x_periodic + self.x_noise
+                else:x_plot = self.x_periodic
+            else:
+                x_plot = self.x
+            fig = m_yearly_boxplots(self.t, x_plot, bar_width=bar_width)
+            self.figures.get('mcissa').update({'figure_yearly_seasonal_box':fig})
+        if plt.get_fignums(): plt.close('all')
         return self
 
     def plot_components(self, num_components: int = 3, variable_names: list = None, component_names: list = None):

@@ -245,7 +245,7 @@ def seasonal_boxplots(t:          np.ndarray,
     bar_offset = 1.15*(bar_width/2)
     t_ = copy.deepcopy(t)
     t_ = [np.datetime64(dt, 's') for dt in t_]
-    t_ = [dt.astype(datetime) for dt in t_]
+    t_ = [dt.astype(object) for dt in t_]
 
     # Create a figure and axis
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -473,6 +473,188 @@ def plot_m_components(t: np.ndarray, x: np.ndarray, extracted_components: list, 
             axes[m, i + 1].plot(t, comp[:, m], color=f'C{i}')
             if m == 0:
                 axes[m, i + 1].set_title(component_names[i])
+
+    plt.tight_layout()
+    return fig
+def plot_m_time_series(t: np.ndarray, x: np.ndarray, variable_names: list = None):
+    """
+    Plots the original multivariate time series.
+
+    Parameters:
+    t: np.ndarray (1D)
+    x: np.ndarray (T, M) - Original multivariate series
+    variable_names: list of str - Names for the M variables
+    """
+    M = x.shape[1]
+    if variable_names is None:
+        variable_names = [f'Variable {m+1}' for m in range(M)]
+
+    fig, axes = plt.subplots(M, 1, figsize=(10, 3 * M), sharex=True)
+    if M == 1:
+        axes = [axes]
+
+    for m in range(M):
+        axes[m].plot(t, x[:, m], 'k', label='original time-series')
+        axes[m].set_ylabel(variable_names[m])
+        axes[m].legend(loc='upper left')
+        if m == 0:
+            axes[m].set_title('Multivariate Time Series')
+
+    plt.tight_layout()
+    fig_width_inch, fig_height_inch = fig.get_size_inches()
+    dpi = fig.get_dpi()
+
+    width_px = fig_width_inch * dpi
+    height_px = fig_height_inch * dpi
+
+    if width_px < min_width or height_px < min_height:
+        new_width_inch = max(min_width / dpi, fig_width_inch)
+        new_height_inch = max(min_height / dpi, fig_height_inch)
+        fig.set_size_inches(new_width_inch, new_height_inch)
+
+    return fig
+def m_seasonal_boxplots(t: np.ndarray, x: np.ndarray, split_date: datetime|None = None, bar_width: float = 0.25):
+    '''
+    Plotting function to create seasonal boxplots split by months for multivariate data.
+
+    Parameters
+    ----------
+    t : np.ndarray (1D)
+    x : np.ndarray (T, M)
+    split_date : datetime|None, optional
+    bar_width : float, optional
+
+    Returns
+    -------
+    fig : Figure
+    '''
+    M = x.shape[1]
+
+    fig, axes = plt.subplots(M, 1, figsize=(8, 6 * M), sharex=True)
+    if M == 1:
+        axes = [axes]
+
+    for m in range(M):
+        ax = axes[m]
+        x_m = x[:, m]
+
+        bar_offset = 1.15*(bar_width/2)
+        t_ = copy.deepcopy(t)
+        t_ = [np.datetime64(dt, 's') for dt in t_]
+        t_ = [dt.astype(object) for dt in t_]
+
+        boxprops = dict(linewidth=1.5, color='darkblue')
+        whiskerprops = dict(linewidth=1.5, color='black')
+        capprops = dict(linewidth=1.5, color='black')
+        medianprops = dict(linewidth=2, color='red')
+        months = ['Jan','Feb','Mar','Apr','May','Jun','Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+        data = []
+
+        if split_date is not None:
+            if not type(split_date) in [datetime]:raise TypeError(f"Imput variable split_date should be a datetime object. Currently is if of type {type(split_date)}")
+
+            t_before = [y < split_date for y in t_]
+            t0 = [y for y,w in zip(t_,t_before) if w == True]
+            x0 = [y for y,w in zip(x_m,t_before) if w == True]
+            t1 = [y for y,w in zip(t_,t_before) if w == False]
+            x1 = [y for y,w in zip(x_m,t_before) if w == False]
+
+            for i,month_j in enumerate(months):
+                data.append(np.array([w for y,w in zip(t0,x0) if y.strftime('%b') == month_j]))
+
+            bp0 = ax.boxplot(data, labels=months, notch=False, patch_artist=True, boxprops=boxprops, whiskerprops=whiskerprops, capprops=capprops, medianprops=medianprops, widths = 0.2)
+
+            for i,whisker in enumerate(bp0['whiskers']): whisker.set_xdata(whisker.get_xdata()-bar_offset)
+            for i,cap in enumerate(bp0['caps']): cap.set_xdata(cap.get_xdata()-bar_offset)
+            for i,median in enumerate(bp0['medians']): median.set_xdata(median.get_xdata()-bar_offset)
+            for i,flier in enumerate(bp0['fliers']): flier.set_xdata(flier.get_xdata()-bar_offset)
+
+            for i,patch in enumerate(bp0['boxes']):
+                patch.set_facecolor('lightblue')
+                if i == 0: patch.set_label(f"Before {split_date.date().strftime('%d %b %Y')}")
+                for vertex_i in patch.get_path().vertices: vertex_i[0] += -bar_offset
+                patch.set_path(patch.get_path())
+            ax.set_xticks([])
+
+            data = []
+            for i,month_j in enumerate(months):
+                data.append(np.array([w for y,w in zip(t1,x1) if y.strftime('%b') == month_j]))
+
+            bp1 = ax.boxplot(data, labels=months, notch=False, patch_artist=True, boxprops=boxprops, whiskerprops=whiskerprops, capprops=capprops, medianprops=medianprops, widths = 0.2)
+
+            for i,whisker in enumerate(bp1['whiskers']): whisker.set_xdata(whisker.get_xdata()+bar_offset)
+            for i,cap in enumerate(bp1['caps']): cap.set_xdata(cap.get_xdata()+bar_offset)
+            for i,median in enumerate(bp1['medians']): median.set_xdata(median.get_xdata()+bar_offset)
+            for i,flier in enumerate(bp1['fliers']): flier.set_xdata(flier.get_xdata()+bar_offset)
+
+            for i,patch in enumerate(bp1['boxes']):
+                patch.set_facecolor('lightgreen')
+                if i == 0: patch.set_label(f"After {split_date.date().strftime('%d %b %Y')}")
+                for vertex_i in patch.get_path().vertices: vertex_i[0] += bar_offset
+                patch.set_path(patch.get_path())
+
+            ax.set_xticks(np.arange(1, len(months) + 1))
+            ax.set_xticklabels(months)
+            ax.legend(loc='upper right')
+        else:
+            for i,month_j in enumerate(months):
+                data.append(np.array([w for y,w in zip(t_,x_m) if y.strftime('%b') == month_j]))
+
+            bp = ax.boxplot(data, labels=months, notch=False, patch_artist=True, boxprops=boxprops, whiskerprops=whiskerprops, capprops=capprops, medianprops=medianprops, widths = bar_width)
+
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.set_ylabel(f'Variable {m+1}')
+        if m == 0: ax.set_title('Seasonal Boxplots by Month')
+
+    plt.tight_layout()
+    return fig
+
+
+def m_yearly_boxplots(t: np.ndarray, x: np.ndarray, bar_width: float = 0.25):
+    '''
+    Plotting function to create seasonal boxplots split by years for multivariate data.
+
+    Parameters
+    ----------
+    t : np.ndarray (1D)
+    x : np.ndarray (T, M)
+    bar_width : float, optional
+
+    Returns
+    -------
+    fig : Figure
+    '''
+    M = x.shape[1]
+
+    t_ = copy.deepcopy(t)
+    t_ = [np.datetime64(dt, 's') for dt in t_]
+    t_ = [dt.astype(datetime) for dt in t_]
+
+    years = [y.year for y in t_]
+    years = sorted(list(set(years)))
+
+    fig, axes = plt.subplots(M, 1, figsize=(8, 6 * M), sharex=True)
+    if M == 1:
+        axes = [axes]
+
+    for m in range(M):
+        ax = axes[m]
+        x_m = x[:, m]
+
+        boxprops = dict(linewidth=1.5, color='darkblue')
+        whiskerprops = dict(linewidth=1.5, color='black')
+        capprops = dict(linewidth=1.5, color='black')
+        medianprops = dict(linewidth=2, color='red')
+
+        data = []
+        for i,year_j in enumerate(years):
+            data.append(np.array([w for y,w in zip(t_,x_m) if y.year == year_j]))
+
+        bp = ax.boxplot(data, labels=years, notch=False, patch_artist=True, boxprops=boxprops, whiskerprops=whiskerprops, capprops=capprops, medianprops=medianprops, widths = bar_width)
+
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.set_ylabel(f'Variable {m+1}')
+        if m == 0: ax.set_title('Seasonal Boxplots by Year')
 
     plt.tight_layout()
     return fig
