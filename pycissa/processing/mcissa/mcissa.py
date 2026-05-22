@@ -691,10 +691,14 @@ class MCissa:
 
                 # We optionally incorporate the Monte Carlo pass flag for frequency k.
                 mc_pass = False
-                for component_j in mc_results.get('components', {}):
-                    if mc_results.get('components').get(component_j).get('array_position') == k:
-                        mc_pass = mc_results.get('components').get(component_j).get('monte_carlo', {}).get(surrogates, {}).get('alpha', {}).get(alpha, {}).get('pass', False)
-                        break
+                # If alpha is 1.0, we just bypass MC testing entirely for that component
+                if alpha >= 1.0:
+                    mc_pass = True
+                else:
+                    for component_j in mc_results.get('components', {}):
+                        if mc_results.get('components').get(component_j).get('array_position') == k:
+                            mc_pass = mc_results.get('components').get(component_j).get('monte_carlo', {}).get(surrogates, {}).get('alpha', {}).get(alpha, {}).get('pass', False)
+                            break
 
                 if mc_pass and p_ratio > variance_threshold:
                     self.x_influence += self.Zs[main_index][:T_len, m, k]
