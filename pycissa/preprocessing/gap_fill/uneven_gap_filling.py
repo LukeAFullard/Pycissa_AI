@@ -55,18 +55,28 @@ def fill_uneven_timeseries(t: np.ndarray,
 
     # Interpolate x onto t_even for initial guess
     # We use interp1d, handling values outside the range by extrapolating or bounding
-    interpolator = interp1d(t, x, kind=interp_method, bounds_error=False, fill_value="extrapolate")
+    if x.ndim > 1:
+        valid_mask = ~np.isnan(x).any(axis=1)
+    else:
+        valid_mask = ~np.isnan(x)
+
+    interpolator = interp1d(t[valid_mask], x[valid_mask], kind=interp_method, bounds_error=False, fill_value="extrapolate", axis=0)
     x_even_interp = interpolator(t_even)
 
     # 2. Identify gaps
-    # For each point in t_even, find the distance to the closest point in t
+    # For each point in t_even, find the distance to the closest point in t that has valid (non-NaN) data
     # If distance > gap_threshold, set x_even_interp to NaN
     # We use searchsorted for efficient nearest neighbor distance calculation
-    idx = np.searchsorted(t, t_even)
-    idx = np.clip(idx, 1, len(t) - 1)
-    left_dist = np.abs(t_even - t[idx - 1])
-    right_dist = np.abs(t_even - t[idx])
-    min_distances = np.minimum(left_dist, right_dist)
+    t_valid = t[valid_mask]
+
+    if len(t_valid) > 0:
+        idx = np.searchsorted(t_valid, t_even)
+        idx = np.clip(idx, 1, len(t_valid) - 1)
+        left_dist = np.abs(t_even - t_valid[idx - 1])
+        right_dist = np.abs(t_even - t_valid[idx])
+        min_distances = np.minimum(left_dist, right_dist)
+    else:
+        min_distances = np.full_like(t_even, np.inf)
 
     x_even_with_gaps = x_even_interp.copy()
     gaps_mask = min_distances > gap_threshold
@@ -124,12 +134,19 @@ def fill_uneven_timeseries(t: np.ndarray,
             x_back_interp = np.sum(Z_back_interp, axis=1)
 
             # Calculate metrics
-            valid_mask = ~np.isnan(x) & ~np.isnan(x_back_interp)
+            if x.ndim > 1 and x.shape[1] == 1:
+                x_back_interp_reshaped = x_back_interp.reshape(-1, 1)
+            elif x.ndim == 1:
+                x_back_interp_reshaped = x_back_interp
+            else:
+                x_back_interp_reshaped = x_back_interp.reshape(x.shape)
+
+            valid_mask = ~np.isnan(x) & ~np.isnan(x_back_interp_reshaped)
             if np.sum(valid_mask) < 2:
                 continue
 
             y_true = x[valid_mask]
-            y_pred = x_back_interp[valid_mask]
+            y_pred = x_back_interp_reshaped[valid_mask]
             rmse = np.sqrt(np.mean((y_true - y_pred)**2))
             ss_res = np.sum((y_true - y_pred)**2)
             ss_tot = np.sum((y_true - np.mean(y_true))**2)
@@ -140,7 +157,7 @@ def fill_uneven_timeseries(t: np.ndarray,
             mean_pred = np.mean(y_pred)
             var_true = np.var(y_true)
             var_pred = np.var(y_pred)
-            covar = np.cov(y_true, y_pred, ddof=0)[0, 1] if len(y_true) > 1 else 0.0
+            covar = np.cov(y_true.flatten(), y_pred.flatten(), ddof=0)[0, 1] if len(y_true.flatten()) > 1 else 0.0
             ccc = (2 * covar) / (var_true + var_pred + (mean_true - mean_pred)**2) if (var_true + var_pred) > 0 else 0.0
 
             # Determine if this L is better

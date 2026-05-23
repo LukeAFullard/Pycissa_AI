@@ -993,10 +993,7 @@ def fill_timeseries_gaps_iterative_components(t:                          np.nda
             # % corrected series
             x_ca = x_final.copy()
             error_estimates_temp            = np.append(error_estimates,np.abs(x[new_random_points] - x_ca[new_random_points]))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                err_pct_temp = 100*(np.abs(x[new_random_points] - x_ca[new_random_points])/(x[new_random_points]))
-                err_pct_temp[np.isinf(err_pct_temp)] = np.nan
-            error_estimates_percentage_temp = np.append(error_estimates_percentage, err_pct_temp)
+            error_estimates_percentage_temp = np.append(error_estimates_percentage,100*(np.abs(x[new_random_points] - x_ca[new_random_points])/(x[new_random_points])))
             original_points_temp            = np.append(original_points,x[new_random_points])
             imputed_points_temp             = np.append(imputed_points,x_ca[new_random_points])
             optimising_error_temp.setdefault(num_groups_to_drop, []).append(error_estimates_temp)
@@ -1195,7 +1192,7 @@ def fill_timeseries_gaps(t:                          np.ndarray,
         while iter_i>0:
             # 3c-i. Find outliers/missing data and convergence criterion
             out, mu, mumax, convergence_error = find_outliers(x_new,outliers,k,l_t,g_t,convergence,data_per_unit_period)
-            if sum(out) == 0:
+            if np.sum(out) == 0:
                 warnings.warn("WARNING: No gaps found in the data. Returning the original (unmodified) time-series.")
                 return x,None,None,None,None,None,None,None,None
             # 3c-ii. Randomly select non-outlier points to evaluate error in gap filling
@@ -1244,16 +1241,13 @@ def fill_timeseries_gaps(t:                          np.ndarray,
 
         #4. Update error estimation and points.
         error_estimates            = np.append(error_estimates,np.abs(x[new_random_points] - x_ca[new_random_points]))
-        with np.errstate(divide='ignore', invalid='ignore'):
-            err_pct = 100*(np.abs(x[new_random_points] - x_ca[new_random_points])/(x_old[new_random_points]))
-            err_pct[np.isinf(err_pct)] = np.nan
-        error_estimates_percentage = np.append(error_estimates_percentage, err_pct)
+        error_estimates_percentage = np.append(error_estimates_percentage,100*(np.abs(x[new_random_points] - x_ca[new_random_points])/(x_old[new_random_points])))
         original_points            = np.append(original_points,x[new_random_points])
         imputed_points             = np.append(imputed_points,x_ca[new_random_points])
 
     #5. Calculate RMSE and residuals
-    error_rmse             = np.sqrt( (np.nansum(error_estimates*error_estimates))/len(error_estimates)    )
-    error_rmse_percentage  = np.sqrt( (np.nansum(error_estimates_percentage*error_estimates_percentage))/len(error_estimates_percentage)    )
+    error_rmse             = np.sqrt( (np.sum(error_estimates*error_estimates))/len(error_estimates)    )
+    error_rmse_percentage  = np.sqrt( (np.sum(error_estimates_percentage*error_estimates_percentage))/len(error_estimates_percentage)    )
     residuals = original_points - imputed_points
 
     #TO DO. INVESTIGATE CONFORMAL PREDICTION METHODS FOR ADDING PREDICTION INTERVALS
@@ -1423,17 +1417,14 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
 
         if test_number > 0:
             error_estimates = np.append(error_estimates, np.abs(x[new_random_points_mask] - x_ca[new_random_points_mask]))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                err_pct = 100 * (np.abs(x[new_random_points_mask] - x_ca[new_random_points_mask]) / (x_old[new_random_points_mask]))
-                err_pct[np.isinf(err_pct)] = np.nan
-            error_estimates_percentage = np.append(error_estimates_percentage, err_pct)
+            error_estimates_percentage = np.append(error_estimates_percentage, 100 * (np.abs(x[new_random_points_mask] - x_ca[new_random_points_mask]) / (x_old[new_random_points_mask])))
             original_points = np.append(original_points, x[new_random_points_mask])
             imputed_points = np.append(imputed_points, x_ca[new_random_points_mask])
 
     # 5. Calculate RMSE and residuals
     if len(error_estimates) > 0:
-        error_rmse = np.sqrt((np.nansum(error_estimates * error_estimates)) / len(error_estimates))
-        error_rmse_percentage = np.sqrt((np.nansum(error_estimates_percentage * error_estimates_percentage)) / len(error_estimates_percentage))
+        error_rmse = np.sqrt((np.sum(error_estimates * error_estimates)) / len(error_estimates))
+        error_rmse_percentage = np.sqrt((np.sum(error_estimates_percentage * error_estimates_percentage)) / len(error_estimates_percentage))
     residuals = original_points - imputed_points
 
     # 6 create figures

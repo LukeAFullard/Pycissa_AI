@@ -426,69 +426,89 @@ class MCissa:
                                    plot: bool = True,
                                    **kwargs):
         '''
-        Multivariate implementation of uneven gap filling. Iterates over each channel
-        independently to fill gaps using univariate uneven gap filling.
+        Multivariate implementation of uneven gap filling. Performs joint cross-channel gap filling by default.
         '''
-        from pycissa.preprocessing.gap_fill.uneven_gap_filling import fill_uneven_timeseries
         import warnings
+        multivariate = kwargs.pop('multivariate', True)
 
         M = self.x.shape[1]
         t_uneven = self.t.copy()
 
-        best_L_list = []
-        best_eps_list = []
-        rmse_list = []
-        r2_list = []
-        ccc_list = []
+        if multivariate:
+            from pycissa.preprocessing.gap_fill.m_uneven_gap_filling import m_fill_uneven_timeseries
+            res = m_fill_uneven_timeseries(t=t_uneven, x=self.x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                           eps_values=eps_values, interp_method=interp_method,
+                                           optimization_metric=optimization_metric,
+                                           r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
+            self.t = res['t_even']
+            self.x = res['x_even_filled']
 
-        # Will replace self.t with the even grid and self.x with filled values
-        t_even_final = None
-        x_even_filled_full = None
+            from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+            self.isnan = detect_nan_data(self.x)
 
-        for m in range(M):
-            x_m = self.x[:, m]
+            self.uneven_gap_fill_best_L = res['best_L']
+            self.uneven_gap_fill_rmse = res['rmse']
+            self.uneven_gap_fill_r2 = res['r2']
 
-            # If all nan, skip gracefully
-            if np.all(np.isnan(x_m)):
-                continue
-
-            res = fill_uneven_timeseries(t=t_uneven, x=x_m, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
-                                        eps_values=eps_values, interp_method=interp_method,
-                                        optimization_metric=optimization_metric,
-                                        r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
-
-            if t_even_final is None:
-                t_even_final = res['t_even']
-                x_even_filled_full = np.zeros((len(t_even_final), M))
-
-            x_even_filled_full[:, m] = res['x_even_filled']
-
-            best_L_list.append(res['best_L'])
-            best_eps_list.append(res['best_eps'])
-            rmse_list.append(res['rmse'])
-            r2_list.append(res['r2'])
-            ccc_list.append(res['ccc'])
-
-            if plot and 'fig' in res:
-                if 'mcissa' not in self.figures:
-                    self.figures['mcissa'] = {}
-                if 'figure_uneven_gap_fill' not in self.figures['mcissa']:
-                    self.figures['mcissa']['figure_uneven_gap_fill'] = []
-                self.figures['mcissa']['figure_uneven_gap_fill'].append(res['fig'])
-
-        self.t = t_even_final
-        self.x = x_even_filled_full
-
-        from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
-        self.isnan = detect_nan_data(self.x)
-
-        self.uneven_gap_fill_best_L = best_L_list
-        self.uneven_gap_fill_rmse = rmse_list
-        self.uneven_gap_fill_r2 = r2_list
-
-        self.information_text += f'''
+            self.information_text += f'''
         ------------------------------------------------------
-        Uneven gap fill average RMSE across channels: {np.nanmean(rmse_list)}
+        Uneven gap fill (Joint M-CiSSA) RMSE: {res['rmse']:.4f}
+        '''
+        else:
+            from pycissa.preprocessing.gap_fill.uneven_gap_filling import fill_uneven_timeseries
+
+            best_L_list = []
+            best_eps_list = []
+            rmse_list = []
+            r2_list = []
+            ccc_list = []
+
+            t_even_final = None
+            x_even_filled_full = None
+
+            for m in range(M):
+                x_m = self.x[:, m]
+
+                if np.all(np.isnan(x_m)):
+                    continue
+
+                res = fill_uneven_timeseries(t=t_uneven, x=x_m, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                            eps_values=eps_values, interp_method=interp_method,
+                                            optimization_metric=optimization_metric,
+                                            r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
+
+                if t_even_final is None:
+                    t_even_final = res['t_even']
+                    x_even_filled_full = np.zeros((len(t_even_final), M))
+
+                x_even_filled_full[:, m] = res['x_even_filled']
+
+                best_L_list.append(res['best_L'])
+                best_eps_list.append(res['best_eps'])
+                rmse_list.append(res['rmse'])
+                r2_list.append(res['r2'])
+                ccc_list.append(res['ccc'])
+
+                if plot and 'fig' in res:
+                    if 'mcissa' not in self.figures:
+                        self.figures['mcissa'] = {}
+                    if 'figure_uneven_gap_fill' not in self.figures['mcissa']:
+                        self.figures['mcissa']['figure_uneven_gap_fill'] = []
+                    self.figures['mcissa']['figure_uneven_gap_fill'].append(res['fig'])
+
+            self.t = t_even_final
+            self.x = x_even_filled_full
+
+            from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+            self.isnan = detect_nan_data(self.x)
+
+            self.uneven_gap_fill_best_L = best_L_list
+            self.uneven_gap_fill_rmse = rmse_list
+            self.uneven_gap_fill_r2 = r2_list
+
+            self.information_text += f'''
+        ------------------------------------------------------
+        Uneven gap fill (indep. CiSSA) mean RMSE: {np.mean(rmse_list):.4f}
         Uneven gap fill average R2 across channels: {np.nanmean(r2_list)}
         '''
 
