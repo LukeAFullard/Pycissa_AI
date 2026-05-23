@@ -27,7 +27,7 @@ X = np.column_stack([river_flow, ref_climate])
 mcissa = MCissa(t, X)
 
 # Using auto BSS! M-CiSSA natively handles phase shifts using its sine/cosine pairs.
-mcissa.auto_blind_source_separation(L=60, main_index=0, K_surrogates=5, variance_threshold=0.10)
+mcissa.auto_blind_source_separation(L=60, main_index=0, K_surrogates=5, variance_threshold=0.10, alpha=1.0)
 
 mse_original_to_true = np.mean((river_flow - true_signal)**2)
 mse_cleaned_to_true = np.mean((mcissa.x_cleaned - true_signal)**2)
