@@ -57,7 +57,7 @@ def extend_series(x: np.ndarray,
     ###########################################################################
     #check extension_type is an integer
     if not type(extension_type) == str:
-        raise('Input parameter "extension_type" should be a string')
+        raise TypeError('Input parameter "extension_type" should be a string')
 
     rows, cols = x.shape
     if cols != 1:
@@ -88,7 +88,6 @@ def extend_series(x: np.ndarray,
         # AR coefficients of the differentiated series
         p = np.fix(T/3)
         dx = np.diff(x, axis = 0)
-        Aold, cccold = sm.regression.yule_walker(dx, order=int(p),method="adjusted")
         [A, var, reflec] = aryule(dx, int(p))
         # Right extension
         y = x.copy().reshape(-1)
@@ -113,7 +112,6 @@ def extend_series(x: np.ndarray,
         # AR coefficients of the differentiated series
         p = np.fix(T/3)
         dx = np.diff(x, axis = 0)
-        Aold, cccold = sm.regression.yule_walker(dx, order=int(p),method="adjusted")
         [A, var, reflec] = aryule(dx, int(p))
         # Right extension (None basically here, just process the left extension step)
         y = x.copy().reshape(-1)
@@ -138,7 +136,6 @@ def extend_series(x: np.ndarray,
         # AR coefficients of the differentiated series
         p = np.fix(T/3)
         dx = np.diff(x, axis = 0)
-        Aold, cccold = sm.regression.yule_walker(dx, order=int(p),method="adjusted")
         [A, var, reflec] = aryule(dx, int(p))
         # Right extension
         y = x.copy().reshape(-1)
