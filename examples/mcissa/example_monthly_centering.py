@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from pycissa.processing.mcissa.mcissa import MCissa
+from pycissa.processing.cissa.cissa import Cissa
 
 def run_scenario(scenario_name, t_uneven, t_target, x_full, true_x, missing_idx, plot_filename):
     print(f"--- Running {scenario_name} ---")
@@ -8,7 +9,7 @@ def run_scenario(scenario_name, t_uneven, t_target, x_full, true_x, missing_idx,
     t_missing = np.delete(t_uneven, missing_idx)
     x_missing = np.delete(x_full, missing_idx, axis=0)
 
-    print("Running Multivariate Uneven Gap Filling...")
+    print("Running Multivariate Centering...")
     model_multi = MCissa(t_missing.copy(), x_missing.copy())
     model_multi.pre_fill_uneven_timeseries(
         L_values=[12],
@@ -25,7 +26,7 @@ def run_scenario(scenario_name, t_uneven, t_target, x_full, true_x, missing_idx,
     x_multi_filled = model_multi.x
     t_multi_even = model_multi.t
 
-    print("Running Univariate Uneven Gap Filling...")
+    print("Running Univariate Centering...")
     model_uni = MCissa(t_missing.copy(), x_missing.copy())
     model_uni.pre_fill_uneven_timeseries(
         L_values=[12],
@@ -103,21 +104,14 @@ if __name__ == "__main__":
     )
 
     # --- SCENARIO 2: Mixed Frequencies and Trends ---
-    # Mixed frequencies: 360 days (annual) and 180 days (semi-annual) with different trends
     s2_annual = 10 * np.sin(2 * np.pi * t_uneven / 360)
     s2_semi_annual = 5 * np.sin(2 * np.pi * t_uneven / 180)
-
-    # Channel 1: Just annual + small trend
     c1_2 = s2_annual + 0.01 * t_uneven + np.random.normal(0, 0.5, size=months)
-    # Channel 2: Annual + semi-annual + strong trend
     c2_2 = s2_annual + s2_semi_annual + 0.05 * t_uneven + np.random.normal(0, 0.2, size=months)
-    # Channel 3: Semi-annual inverted + small trend
     c3_2 = -s2_semi_annual + 0.01 * t_uneven + np.random.normal(0, 0.2, size=months)
-
     x_full_2 = np.column_stack([c1_2, c2_2, c3_2])
-
     true_c1_2 = 10 * np.sin(2 * np.pi * t_target / 360) + 0.01 * t_target
-    true_x_2 = np.column_stack([true_c1_2, true_c1_2, true_c1_2]) # Only checking C1 anyway
+    true_x_2 = np.column_stack([true_c1_2, true_c1_2, true_c1_2])
 
     run_scenario(
         "Scenario 2: Mixed Frequencies and Trends",
@@ -126,20 +120,11 @@ if __name__ == "__main__":
     )
 
     # --- SCENARIO 3: Phase-Shifted Signals ---
-    # Phase shifts are captured efficiently by M-CiSSA spatial eigenvectors
     s3_base = 10 * np.sin(2 * np.pi * t_uneven / 360)
-
-    # C1 is standard
     c1_3 = s3_base + np.random.normal(0, 0.5, size=months)
-
-    # C2 is delayed by 30 days (1 month phase shift)
     c2_3 = 10 * np.sin(2 * np.pi * (t_uneven - 30) / 360) + np.random.normal(0, 0.2, size=months)
-
-    # C3 is advanced by 60 days
     c3_3 = 10 * np.sin(2 * np.pi * (t_uneven + 60) / 360) + np.random.normal(0, 0.2, size=months)
-
     x_full_3 = np.column_stack([c1_3, c2_3, c3_3])
-
     true_c1_3 = 10 * np.sin(2 * np.pi * t_target / 360)
     true_x_3 = np.column_stack([true_c1_3, true_c1_3, true_c1_3])
 
@@ -150,7 +135,6 @@ if __name__ == "__main__":
     )
 
     # --- SCENARIO 4: Gap Size Sensitivity ---
-    # We will loop through varying gap sizes to see how performance degrades.
     print("\n--- Running Scenario 4: Gap Size Sensitivity ---")
     gap_sizes_list = [2, 3, 4, 6]
     uni_rmses = []
@@ -163,7 +147,6 @@ if __name__ == "__main__":
         x_m = x_full_1.copy()
 
         # We simulate a sensor failure where ONLY Channel 1 stops recording for g_size months.
-        # Channels 2 and 3 continue recording, allowing multivariate to use their information!
         x_m[g_idx, 0] = np.nan
 
         # Multi
@@ -192,7 +175,6 @@ if __name__ == "__main__":
 
         print(f"Gap Size {g_size} -> Univariate RMSE: {err_u:.4f} | Multivariate RMSE: {err_m:.4f}")
 
-    # Plot sensitivity
     plt.figure(figsize=(8, 5))
     plt.plot(gap_sizes_list, uni_rmses, 'ro--', label='Univariate Imputation')
     plt.plot(gap_sizes_list, multi_rmses, 'go-', label='Multivariate Imputation')
@@ -209,9 +191,8 @@ if __name__ == "__main__":
     # --- SCENARIO 5: Pure Centering Test (0 missing months) ---
     print("\n--- Running Scenario 5: Pure Centering Test (No Missing Months) ---")
 
-    # We use x_full_1 which has NO deleted elements, just the uneven sampling jitter.
+    # We use x_full_1 which has NO missing elements, just the uneven sampling jitter.
 
-    # Multi
     mod_m_full = MCissa(t_uneven.copy(), x_full_1.copy())
     mod_m_full.pre_fill_uneven_timeseries(
         L_values=[12], dt=30.0, gap_threshold=20.0,
@@ -219,8 +200,6 @@ if __name__ == "__main__":
         estimate_error=False, verbose=False,
         component_selection_method='drop_smallest_proportion', eigenvalue_proportion=0.99
     )
-
-    # Uni
     mod_u_full = MCissa(t_uneven.copy(), x_full_1.copy())
     mod_u_full.pre_fill_uneven_timeseries(
         L_values=[12], dt=30.0, gap_threshold=20.0,
@@ -228,9 +207,56 @@ if __name__ == "__main__":
         estimate_error=False, verbose=False,
         component_selection_method='drop_smallest_proportion', eigenvalue_proportion=0.99
     )
-
-    # Measure against true clean underlying signal across all evenly spaced points
     err_m_full = np.sqrt(np.mean((mod_m_full.x[:, 0] - true_x_1[:, 0])**2))
     err_u_full = np.sqrt(np.mean((mod_u_full.x[:, 0] - true_x_1[:, 0])**2))
-
     print(f"Overall Series Reconstruction - Univariate RMSE: {err_u_full:.4f} | Multivariate RMSE: {err_m_full:.4f}")
+
+    # --- SCENARIO 6: Jittered Channel vs Stable Channels ---
+    print("\n--- Running Scenario 6: Jittered Channel vs Stable Channels ---")
+
+    t_even_scen6 = t_target.copy()
+    true_c1_scen6 = 10 * np.sin(2 * np.pi * t_even_scen6 / 360)
+
+    x_scen6 = np.column_stack([
+        true_c1_scen6 + np.random.normal(0, 0.5, size=months),
+        12 * np.sin(2 * np.pi * t_even_scen6 / 360) + np.random.normal(0, 0.2, size=months),
+        8 * np.sin(2 * np.pi * t_even_scen6 / 360) + np.random.normal(0, 0.2, size=months)
+    ])
+
+    jitter_gaps = np.random.choice(months, size=int(0.4 * months), replace=False)
+    x_scen6[jitter_gaps, 0] = np.nan
+
+    # Multi
+    mod_m_s6 = MCissa(t_even_scen6.copy(), x_scen6.copy())
+    mod_m_s6.pre_fill_uneven_timeseries(L_values=[12], dt=30.0, gap_threshold=2.0, center_data=True, multivariate=True, plot=False, estimate_error=False, verbose=False, component_selection_method='drop_smallest_proportion', eigenvalue_proportion=0.99)
+
+    # Uni
+    mod_u_s6 = MCissa(t_even_scen6.copy(), x_scen6.copy())
+    mod_u_s6.pre_fill_uneven_timeseries(L_values=[12], dt=30.0, gap_threshold=2.0, center_data=True, multivariate=False, plot=False, estimate_error=False, verbose=False, component_selection_method='drop_smallest_proportion', eigenvalue_proportion=0.99)
+
+    err_m_s6 = np.sqrt(np.mean((mod_m_s6.x[jitter_gaps, 0] - true_c1_scen6[jitter_gaps])**2))
+    err_u_s6 = np.sqrt(np.mean((mod_u_s6.x[jitter_gaps, 0] - true_c1_scen6[jitter_gaps])**2))
+
+    print(f"Jittered Channel 1 Recovery - Univariate RMSE: {err_u_s6:.4f} | Multivariate RMSE: {err_m_s6:.4f}")
+
+    # Plotting
+    plt.figure(figsize=(10, 4))
+    plt.plot(t_even_scen6, true_c1_scen6, 'k:', alpha=0.5, label='True C1 Signal')
+
+    valid_mask_s6 = ~np.isnan(x_scen6[:, 0])
+    plt.plot(t_even_scen6[valid_mask_s6], x_scen6[valid_mask_s6, 0], 'ks', label='Valid Centered C1 Data')
+
+    plt.plot(t_even_scen6, mod_u_s6.x[:, 0], 'r--', label='Univariate Reconstructed')
+    plt.plot(t_even_scen6, mod_m_s6.x[:, 0], 'g-', alpha=0.8, label='Multivariate Reconstructed')
+
+    plt.plot(t_even_scen6[jitter_gaps], mod_u_s6.x[jitter_gaps, 0], 'rX', markersize=8)
+    plt.plot(t_even_scen6[jitter_gaps], mod_m_s6.x[jitter_gaps, 0], 'gX', markersize=8)
+
+    plt.title(f'Scenario 6: Jittered Channel 1 vs Stable Channels 2 & 3\nUnivariate RMSE: {err_u_s6:.2f} | Multivariate RMSE: {err_m_s6:.2f}')
+    plt.legend(loc='upper right', fontsize=8)
+    plt.xlabel('Time (Days)')
+    plt.ylabel('Amplitude')
+    plt.tight_layout()
+    plt.savefig('examples/mcissa/monthly_centering_scenario_6.png')
+    plt.close('all')
+    print("Saved plot to examples/mcissa/monthly_centering_scenario_6.png\n")
