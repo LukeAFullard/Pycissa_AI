@@ -57,6 +57,9 @@ The M-CiSSA implementation massively outperforms the minimum literature baseline
 
 ### Visualizing the Data
 
-The plot below shows the step-by-step breakdown. Notice how the input (Plot 3) is completely ruined by the red spikes, but the M-CiSSA output (Plot 4) is a near-perfect mathematical match for the Ground Truth (Plot 1).
+The plot below shows the step-by-step breakdown.
+1. Notice how the input (Plot 3) is completely ruined by the red spikes.
+2. The M-CiSSA output (Plot 4) is a near-perfect mathematical match for the Ground Truth (Plot 1).
+3. The **Instantaneous Error** (Plot 5) shows the raw difference between the Ground Truth and the M-CiSSA output. Notice that the error flatlines near zero, proving that the algorithm did not just smooth the data, but perfectly extracted the exact underlying sine waves.
 
 ![EEG BSS Results](eeg_bss_results.png)

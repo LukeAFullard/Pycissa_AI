@@ -67,6 +67,9 @@ rmse = np.sqrt(np.mean((clean_eeg - cleaned_eeg)**2))
 rms_clean = np.sqrt(np.mean(clean_eeg**2))
 rrmse = rmse / rms_clean
 
+# Metric 3: Instantaneous Error
+instantaneous_error = clean_eeg - cleaned_eeg
+
 print(f"\n--- VERIFICATION RESULTS ---")
 print(f"Target Correlation Coefficient (CC) >= 0.85")
 print(f"Actual CC: {cc:.4f} {'(PASS)' if cc >= 0.85 else '(FAIL)'}")
@@ -77,7 +80,7 @@ print(f"Actual RRMSE: {rrmse:.4f} {'(PASS)' if rrmse <= 0.45 else '(FAIL)'}")
 # ---------------------------------------------------------
 # 4. PLOT THE RESULTS
 # ---------------------------------------------------------
-fig, axes = plt.subplots(4, 1, figsize=(12, 10), sharex=True)
+fig, axes = plt.subplots(5, 1, figsize=(12, 12), sharex=True)
 
 axes[0].plot(t, clean_eeg, color='green')
 axes[0].set_title("1. Ground Truth (Clean EEG - Target to Recover)")
@@ -94,6 +97,11 @@ axes[2].set_ylim(-12, 12)
 axes[3].plot(t, cleaned_eeg, color='blue')
 axes[3].set_title(f"4. M-CiSSA Cleaned Output (CC: {cc:.2f})")
 axes[3].set_ylim(-12, 12)
+
+axes[4].plot(t, instantaneous_error, color='purple')
+axes[4].set_title("5. Instantaneous Error (Ground Truth - M-CiSSA Output)")
+axes[4].set_ylim(-12, 12)
+axes[4].axhline(0, color='black', linestyle='--', linewidth=0.5)
 
 plt.xlabel("Time (Seconds)")
 plt.tight_layout()
