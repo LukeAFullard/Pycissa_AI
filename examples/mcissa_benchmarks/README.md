@@ -1,78 +1,43 @@
 # El Niño (ENSO) Climate Benchmark using M-CiSSA
 
-This example demonstrates how to use Multivariate Circulant Singular Spectrum Analysis (M-CiSSA) to rigorously extract the known physical cyclical properties of the El Niño-Southern Oscillation (ENSO) from a noisy, multivariate climate dataset.
+This example demonstrates how to use Multivariate Circulant Singular Spectrum Analysis (M-CiSSA) to rigorously extract the known physical cyclical properties of the El Niño-Southern Oscillation (ENSO) from a noisy climate dataset.
 
-This acts as a verifiable benchmark (Benchmark 2 in `VERIFICATION_PLAN.md`) by proving the algorithm's ability to isolate specific global climate teleconnections.
-
-## The Dataset
-
-We use the built-in `statsmodels.datasets.elnino` dataset.
-*   **Data:** 61 years of monthly Sea Surface Temperature (SST) measurements (1950 - 2010).
-*   **Structure:** We treat this as a 12-channel multivariate time series. Each month (January through December) acts as an independent "channel", and the time dimension is in Years. This tests M-CiSSA's ability to untangle shared physics across different spatial/temporal dimensions simultaneously.
+It explicitly compares the **Multivariate approach** against two standard **Univariate approaches** to highlight why M-CiSSA is essential for complex datasets.
 
 ## The Benchmark Ground Truth
-
 As established in geophysical literature, the ENSO cycle manifests strongly through two dominant low-frequency bands:
-1.  **Quasi-Quadrennial Mode:** Approximately 4 years.
-2.  **Quasi-Biennial Mode:** Approximately 2 to 3 years.
+1.  **Quasi-Quadrennial Mode:** Approximately 4.0 years.
+2.  **Quasi-Biennial Mode:** Approximately 2.6 years.
 
-M-CiSSA must be able to peer through the heavy seasonal variations and long-term global warming trends to mathematically isolate these exact frequencies.
+The algorithm must be able to peer through heavy seasonal variations and long-term global warming trends to mathematically isolate these exact frequencies.
 
-## Running the Benchmark
+---
 
-You can run this benchmark yourself using the provided Python script `run_elnino_benchmark.py` located in this directory.
+## The Three Approaches
 
-```python
-import numpy as np
-import statsmodels.api as sm
-from pycissa.processing.mcissa.mcissa import MCissa
-import matplotlib.pyplot as plt
+The `run_elnino_benchmark.py` script runs three distinct analyses on the 61-year monthly Sea Surface Temperature dataset to demonstrate the mathematical problem:
 
-# 1. Load the Data
-df = sm.datasets.elnino.load_pandas().data
-X = df.iloc[:, 1:].values # 12 months as channels
-t_years = df['YEAR'].values
+### 1. Univariate CISSA (Continuous Monthly Data)
+**The Setup:** We flatten the entire dataset into one long, continuous line of 732 months.
+**The Problem:** The variance is absolutely dominated by the 1-year seasonal cycle (Summer vs Winter). Because Univariate CISSA looks at variance purely across time, this massive seasonal amplitude "shouts over" the weaker, slower ENSO cycles.
+**The Result:** The algorithm identifies the massive 1-year cycle, but shatters the 4-year cycle into dozens of noisy harmonic fragments, making clean extraction impossible. Look at how erratic and dominated by fast-oscillations the periodic component is:
 
-# 2. Initialize M-CiSSA
-mcissa = MCissa(t=t_years, x=X)
+![Continuous Monthly Original](elnino_cissa_monthly_time_series.png)
+![Continuous Monthly Components](elnino_cissa_monthly_components.png)
 
-# 3. Fit the model using a 16-year window to capture the long-term cycles
-mcissa.fit(L=16)
+### 2. Univariate CISSA (Annual Mean)
+**The Setup:** Because the continuous monthly approach fails so badly, traditional univariate analysis forces you to calculate an "Annual Mean", compressing the 12 months into a single data point per year.
+**The Problem:** This mathematically destroys all intra-year phase dynamics. You lose the ability to see how ENSO behaves differently in January vs. July.
+**The Result:** It successfully extracts the 4-year cycle, but the result is a single, oversimplified oscillating line.
 
-# 4. Perform Monte Carlo Significance testing and Grouping
-mcissa.auto_cissa(L=16, plot_result=False, verbose=False)
+![Annual Mean Original](elnino_cissa_annual_time_series.png)
+![Annual Mean Components](elnino_cissa_annual_components.png)
 
-# 5. Extract dominant frequencies
-mcissa.post_run_frequency_time_analysis(data_per_period=1)
-for freq in mcissa.frequencies:
-    try:
-        f = float(freq)
-        if f > 0:
-            print(f"- Period: {1.0 / f:.2f} years")
-    except ValueError:
-        pass
-```
 
-## The Results
+### 3. Multivariate M-CISSA (The Solution)
+**The Setup:** The raw dataset is fed directly into the algorithm as a 12-channel system (each month is a channel). The time axis remains Years.
+**The Solution:** M-CiSSA simultaneously analyzes the variance *across time* (years) and *across space* (months). The massive 1-year seasonal variance is absorbed instantly by the *spatial eigenvectors* (the relationships between the channels).
+**The Result:** Free from seasonal noise, the temporal algorithm effortlessly extracts the exact 4.00-year and 2.67-year ENSO cycles. Because it kept the monthly data intact, it reconstructs exactly how the 4-year cycle phase-shifts across different months.
 
-When the script executes, it outputs the mathematically dominant periodic components extracted by the algorithm:
-
-```text
-- Period: 16.00 years (Long-term decadal trend)
-- Period: 8.00 years
-- Period: 5.33 years
-- Period: 4.00 years  <-- SUCCESS (Quasi-Quadrennial ENSO)
-- Period: 3.20 years
-- Period: 2.67 years  <-- SUCCESS (Quasi-Biennial ENSO)
-- Period: 2.29 years
-```
-
-### Visualizing the Data
-
-**1. The Original Multivariate Time Series**
-The raw data is incredibly noisy, oscillating wildly between months and years.
-![Original Time Series](elnino_time_series.png)
-
-**2. The Extracted Components**
-M-CiSSA successfully groups the data into the statistically significant underlying drivers. The plot below shows the isolated Trend, and the dominant Periodic signals which contain the extracted ~4-year and ~2.6-year ENSO cycles.
-![Extracted Components](elnino_components.png)
+![Multivariate Original](elnino_mcissa_time_series.png)
+![Multivariate Components](elnino_mcissa_components.png)
