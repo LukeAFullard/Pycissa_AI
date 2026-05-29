@@ -56,5 +56,6 @@ The algorithm perfectly isolates the natural, real-world 11-year cycle from the 
 1. **Plot 1** shows the pristine real-world data (Green) being heavily overridden by the interference (Grey).
 2. **Plot 2** is the reference channel used to guide the algorithm.
 3. **Plot 3** proves the success of the BSS. The Blue line (M-CiSSA output) is a near-perfect overlay of the Green dashed line (the original real-world data).
+4. **Plot 4** displays the instantaneous error across time. The near-zero flatline mathematically confirms that the extraction was precise across the entire 300-year real-world history.
 
 ![Real World BSS Results](real_world_bss_results.png)
