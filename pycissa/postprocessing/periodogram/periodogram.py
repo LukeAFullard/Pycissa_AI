@@ -747,7 +747,11 @@ def generate_peridogram_plots(
     my_freq,my_psd_,removed_psd,removed_freq = make_periodogram_arrays(psd, frequencies,significant_components=significant_components)
     if not len(my_freq) > 3:  #when fitting we want at least 3 points for a linear fit
         return None, None, None, {}, {}, None,None,None, None,None,None,None,None
-    normalisation_factor = 2 / (y.size * np.mean(y**2))
+    mean_y_sq = np.mean(y**2)
+    if mean_y_sq == 0:
+        normalisation_factor = 1.0 # Or some fallback, if signal is completely zero there's no power
+    else:
+        normalisation_factor = 2 / (y.size * mean_y_sq)
     my_psd = [x*normalisation_factor for x in my_psd_]
 
     #make linear plot.
