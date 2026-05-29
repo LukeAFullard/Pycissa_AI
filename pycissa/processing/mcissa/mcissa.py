@@ -1211,6 +1211,143 @@ class MCissa:
 
         return self
 
+    def post_periodogram_analysis(self,
+                                  channel_index                      : int = 0,
+                                  use_cleaned                        : bool = False,
+                                  significant_components             : list|None = None,
+                                  monte_carlo_significant_components : bool = True,
+                                  alpha                              : float = 0.05,
+                                  max_breakpoints                    : int = 1,
+                                  n_boot                             : int = 500,
+                                  hurst_window                       : int = 12,
+                                  normalization                      : str = 'standard',
+                                  center_data                        : bool = True,
+                                  fit_mean                           : bool = True,
+                                  nterms                             : int = 1,
+                                  **kwargs):
+        '''
+        Function to run a periodogram analysis to find the fractal scaling of the time series for a specific channel.
+        In all cases the trend is not considered, and significant periodic components can be ignored too using the input parameters.
+        Also calculates the Hurst exponent for the full and detrended series.
+
+        Parameters
+        ----------
+        channel_index : int, optional
+            DESCRIPTION. The default is 0. The channel to analyze.
+        use_cleaned : bool, optional
+            DESCRIPTION. The default is False. If True, uses the blind source separated cleaned components.
+        significant_components : list|None, optional
+            DESCRIPTION. The default is None. A list of significant components which will not be considered in the periodogram analysis. Can also be None, in which case all components (except the trend) will be used for the periodogram, or if significant_components = None and monte_carlo_significant_components = True, then the monte carlo significant components will be removed.
+        monte_carlo_significant_components : bool, optional
+            DESCRIPTION. The default is True. If significant_components = None and monte_carlo_significant_components = True, the significant components list will be filled with the significant components as defined using the monte carlo analysis.
+        alpha : float, optional
+            DESCRIPTION. The default is 0.05. Significance level for statistical tests.
+        max_breakpoints : int, optional
+            DESCRIPTION. The default is 1. Max number of breakpoints for the segmented linear fit. Currently will always be reset to 1 if >1.
+        n_boot : int, optional
+            DESCRIPTION. The default is 500. Number of bootstrap iterations for the segmented linear fit.
+        hurst_window : int, optional
+            DESCRIPTION. The default is 12. The window length (in number of time steps) for the rolling Hurst calculation.
+        normalization : str, optional
+            DESCRIPTION. The default is 'standard'. How to normalise the lomb-scargle periodogram.
+        center_data :  bool, optional
+            DESCRIPTION. The default is True. Whether to center the data for the lomb-scargle periodogram.
+        fit_mean :  bool, optional
+            DESCRIPTION. The default is True. Whether to fit the mean for the lomb-scargle periodogram.
+        nterms : int, optional
+            DESCRIPTION. The default is 1. Number of terms in the trigonometric fit of the lomb-scargle periodogram.
+        **kwargs
+            DESCRIPTION. keyword arguments for fitting.
+        '''
+        from pycissa.postprocessing.periodogram.periodogram import generate_peridogram_plots, generate_lomb_scargle_peridogram_plots
+        necessary_attributes = ["psd", "frequencies", "results"]
+        for attr_i in necessary_attributes:
+            if not hasattr(self, attr_i): raise ValueError(f"Attribute {attr_i} does not appear to exist in the class. Please run the mcissa fit method before running the post_periodogram_analysis method.")
+
+        if use_cleaned:
+            necessary_attributes = ["x_cleaned_components"]
+            for attr_i in necessary_attributes:
+                if not hasattr(self, attr_i): raise ValueError(f"Attribute {attr_i} does not appear to exist. Please run auto_blind_source_separation before running post_periodogram_analysis with use_cleaned=True.")
+            suffix = '_cleaned'
+        else:
+            necessary_attributes = ["x_trend", "x_periodic", "x_noise"]
+            for attr_i in necessary_attributes:
+                if not hasattr(self, attr_i): raise ValueError(f"Attribute {attr_i} does not appear to exist. Please run auto_detrend or post_group_components before running post_periodogram_analysis.")
+            suffix = f'_channel_{channel_index}'
+
+        #if no significant components supplied (i.e. = None) and if choosing to use monte_carlo to define significant components, here get those significant components.
+        if (not significant_components) and (monte_carlo_significant_components):
+            if self.results.get('mcissa').get('components').get('trend').get('monte_carlo') is None:
+                raise ValueError(f"Please run the post_run_monte_carlo_analysis method before running the post_periodogram_analysis with monte_carlo_significant_components = True and no explicitly set significant_components.")
+            mc_surrogates = self.results['mcissa']['model parameters']['monte_carlo_surrogate_type']
+            mc_alpha = self.results['mcissa']['model parameters']['monte_carlo_alpha']
+            significant_components = []
+            for key_j in self.results['mcissa']['components'].keys():
+                if key_j != 'trend':
+                    if self.results['mcissa']['components'][key_j]['monte_carlo'][mc_surrogates]['alpha'][mc_alpha]['pass']:
+                        position = self.results['mcissa']['components'][key_j]['array_position']
+                        significant_components.append(position)
+            if len(significant_components) == 0:
+                significant_components = None
+
+        if use_cleaned:
+            # We need to construct x_trend, x_periodic, x_noise from the cleaned components
+            trend_idx = self.results['mcissa']['noise component tests'].get('trend_index', [])
+            periodic_idx = self.results['mcissa']['noise component tests'].get('periodic_index', [])
+            noise_idx = self.results['mcissa']['noise component tests'].get('noise_index', [])
+
+            x_trend_channel = np.zeros_like(self.x[:, 0])
+            x_periodic_channel = np.zeros_like(self.x[:, 0])
+            x_noise_channel = np.zeros_like(self.x[:, 0])
+
+            for key_j in self.results['mcissa']['components'].keys():
+                idx = self.results['mcissa']['components'][key_j]['array_position']
+                comp_data = self.x_cleaned_components[:, idx]
+                if idx in trend_idx:
+                    x_trend_channel += comp_data
+                elif idx in periodic_idx:
+                    x_periodic_channel += comp_data
+                elif idx in noise_idx:
+                    x_noise_channel += comp_data
+        else:
+            x_trend_channel = self.x_trend[:, channel_index]
+            x_periodic_channel = self.x_periodic[:, channel_index]
+            x_noise_channel = self.x_noise[:, channel_index]
+
+        if use_cleaned:
+            psd_to_use = self.psd[:, self.blind_source_separation_main_index] # Could also recalculate, but usually BSS just separates into cleaned and influence from the main channel PSD. Let's just use the main index PSD.
+        else:
+            psd_to_use = self.psd[:, channel_index]
+
+        fig_linear, fig_segmented, fig_robust_linear, linear_slopes, segmented_slopes, robust_linear_slopes, all_hurst, detrended_hurst, fig_rolling_hurst, rolling_hurst, rolling_hurst_detrended, fig_robust_segmented, robust_segmented_results = generate_peridogram_plots(
+            x_trend_channel, x_periodic_channel + x_noise_channel, psd_to_use, self.frequencies,
+            significant_components=significant_components, alpha=alpha, max_breakpoints=max_breakpoints, n_boot=n_boot, hurst_window=hurst_window
+        )
+
+        self.figures.get('mcissa').update({f'figure_periodogram_linear{suffix}'           :fig_linear})
+        self.figures.get('mcissa').update({f'figure_periodogram_robust_linear{suffix}'    :fig_robust_linear})
+        self.figures.get('mcissa').update({f'figure_periodogram_segmented{suffix}'        :fig_segmented})
+        self.figures.get('mcissa').update({f'figure_periodogram_robust_segmented{suffix}' :fig_robust_segmented})
+        self.figures.get('mcissa').update({f'figure_rolling_Hurst{suffix}'                :fig_rolling_hurst})
+
+        self.results.get('mcissa').setdefault('fractal scaling results', {})
+        if suffix not in self.results.get('mcissa').get('fractal scaling results'):
+            self.results.get('mcissa').get('fractal scaling results')[suffix] = {}
+
+        self.results.get('mcissa').get('fractal scaling results')[suffix].update({
+            'linear_periodogram_slopes'           : linear_slopes,
+            'robust_linear_periodogram_slopes'    : robust_linear_slopes,
+            'segmented_periodogram_slopes'        : segmented_slopes,
+            'full Hurst exponent'                 : all_hurst,
+            'detrended Hurst exponent'            : detrended_hurst,
+            'rolling Hurst exponent'              : rolling_hurst,
+            'detrended rolling Hurst exponent'    : rolling_hurst_detrended,
+            'robust_segmented_periodogram_slopes' : robust_segmented_results
+        })
+
+        if plt.get_fignums(): plt.close('all')
+        return self
+
     def plot_seasonal_boxplots(self,
                                split_date:    datetime|None = None,
                                bar_width:     float = 0.25,
