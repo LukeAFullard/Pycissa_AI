@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr
 
-def test_if_multiplicative(mixed: np.ndarray, ref: np.ndarray, window_size: int = 20, threshold_ratio: float = 0.5, p_value_thresh: float = 0.05) -> tuple[bool, float, float]:
+from typing import Optional, List, Tuple
+
+def test_if_multiplicative(mixed: np.ndarray, ref: np.ndarray, window_size: int = 20, threshold_ratio: float = 0.5, p_value_thresh: float = 0.05) -> Tuple[bool, float, float]:
     """
     Auto-tests if an artifact or noise is likely multiplicative rather than additive.
     Multiplicative noise modulates the amplitude (envelope/variance) of the main signal.
@@ -50,7 +52,7 @@ class MultiplicativeTransformer:
         self.offsets = {}
         self.is_fitted = False
 
-    def fit_transform(self, X: np.ndarray, columns_to_transform: list[int] | None = None) -> np.ndarray:
+    def fit_transform(self, X: np.ndarray, columns_to_transform: Optional[List[int]] = None) -> np.ndarray:
         """
         Calculates necessary offsets to make data strictly positive and applies a natural log transform.
 
