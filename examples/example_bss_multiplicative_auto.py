@@ -4,100 +4,73 @@ import warnings
 warnings.filterwarnings('ignore')
 
 from pycissa.processing.mcissa.mcissa import MCissa
-from pycissa.preprocessing import MultiplicativeTransformer, test_if_multiplicative
+from pycissa.preprocessing import test_if_multiplicative
 
 T = 400
 t = np.arange(T)
 
-# 1. Create a signal with Multiplicative Noise
-true_signal_m = 10.0 + 3.0 * np.sin(2 * np.pi * t / 15.0)
-artifact_m = 1.5 + 0.8 * np.sin(2 * np.pi * t / 60.0)
-mixed_mult = true_signal_m * artifact_m + np.random.randn(T) * 0.1
-ref_mult = artifact_m + np.random.randn(T) * 0.1
+# True main signal (e.g. underlying physiological cycle)
+true_signal = 5.0 * np.sin(2 * np.pi * t / 25.0)
 
-# 2. Create a signal with Additive Noise
-true_signal_a = 10.0 + 3.0 * np.sin(2 * np.pi * t / 15.0)
-artifact_a = 5.0 * np.sin(2 * np.pi * t / 60.0)
-mixed_add = true_signal_a + artifact_a + np.random.randn(T) * 0.1
-ref_add = artifact_a + np.random.randn(T) * 0.1
+# The Artifact modulates the AMPLITUDE (variance) of the true signal
+# e.g. A movement artifact that scales the gain of the sensor
+artifact_modulation = 1.0 + 0.8 * np.sin(2 * np.pi * t / 80.0)
 
-def process_mixed_signal(mixed, ref, true_mean=None):
-    """
-    Demonstrates how to test for multiplicative noise, apply the MultiplicativeTransformer
-    if needed, run M-CiSSA, and then invert the transform to recover the signal.
-    """
-    is_mult, corr_raw, corr_std = test_if_multiplicative(mixed, ref)
-    print(f"Is Multiplicative? {is_mult} (Raw Corr: {corr_raw:.2f}, Variance Corr: {corr_std:.2f})")
+# True main signal mixed multiplicatively
+raw_mixed = true_signal * artifact_modulation + np.random.randn(T) * 0.5
 
-    X = np.column_stack([mixed, ref])
+# Reference channel for the artifact
+ref_channel = artifact_modulation + np.random.randn(T) * 0.2
 
-    if is_mult:
-        print(" -> Multiplicative mixture detected. Applying log-transform.")
-        transformer = MultiplicativeTransformer()
-        # Transform both columns
-        X_trans = transformer.fit_transform(X)
-    else:
-        print(" -> Additive mixture detected. Keeping linear.")
-        X_trans = X
+# 1. Variance Correlation Test
+# This automatically checks if the artifact correlates with the rolling standard deviation
+# rather than just the raw mean, indicating a multiplicative relationship.
+is_mult, corr_raw, corr_std = test_if_multiplicative(raw_mixed, ref_channel, window_size=20)
 
-    # Run standard M-CiSSA Blind Source Separation
-    mcissa = MCissa(t, X_trans)
-    # Using alpha=1.0 with variance_threshold for precise separation of the main components
-    # when we have high SNR true vs artifact frequencies, skipping MC test over-flagging
-    mcissa.auto_blind_source_separation(L=100, main_index=0, K_surrogates=5, variance_threshold=0.01, alpha=1.0)
+print(f"Variance Correlation Test:")
+print(f"Is Multiplicative? {is_mult}")
+print(f"Raw Correlation (Mean): {corr_raw:.2f}")
+print(f"Variance Correlation (Std): {corr_std:.2f}")
 
-    recovered = mcissa.x_cleaned
+# 2. Linear BSS on Multiplicative Data
+# Because the artifact modulates the amplitude, the frequencies of the true signal
+# and the artifact mix (cross-modulation), creating sidebands. Linear BSS struggles
+# to perfectly separate this because the artifact doesn't exist as a simple additive wave.
+X = np.column_stack([raw_mixed, ref_channel])
+mcissa = MCissa(t, X)
 
-    # Invert the transform if we applied it
-    if is_mult:
-        recovered = transformer.inverse_transform(recovered, col_idx=0)
+# We use variance_threshold with alpha=1.0 for a fast linear extraction demonstration
+mcissa.auto_blind_source_separation(L=60, main_index=0, K_surrogates=5, variance_threshold=0.01, alpha=1.0)
+recovered_linear = mcissa.x_cleaned
 
-        # Scaling correctly for the log transform mean shift.
-        # BSS in log space often shifts the true mean, so we scale it back.
-        if true_mean is not None:
-            scale_factor = true_mean / np.mean(recovered)
-            recovered = recovered * scale_factor
-    else:
-        # For additive, we just need to ensure the trend (mean) wasn't completely lost
-        # due to alpha=1.0 removing the DC component if it mapped to the reference.
-        if true_mean is not None:
-            recovered = recovered - np.mean(recovered) + true_mean
+mse_mixed = np.mean((raw_mixed - true_signal)**2)
+mse_linear = np.mean((recovered_linear - true_signal)**2)
 
-    return recovered, is_mult
+print(f"\nMSE (Raw Mixed) : {mse_mixed:.4f}")
+print(f"MSE (Linear BSS): {mse_linear:.4f}")
 
-print("--- Processing Multiplicative Mix ---")
-recovered_m, flag_m = process_mixed_signal(mixed_mult, ref_mult, true_mean=np.mean(true_signal_m))
-
-print("\n--- Processing Additive Mix ---")
-recovered_a, flag_a = process_mixed_signal(mixed_add, ref_add, true_mean=np.mean(true_signal_a))
-
-
-mse_m = np.mean((recovered_m - true_signal_m)**2)
-mse_a = np.mean((recovered_a - true_signal_a)**2)
-
-print(f"\nMSE (Multiplicative Recovery) : {mse_m:.4f}")
-print(f"MSE (Additive Recovery)       : {mse_a:.4f}")
 
 plt.figure(figsize=(12, 10))
 
 plt.subplot(3, 1, 1)
-plt.title("True Signals")
-plt.plot(t, true_signal_m, label="True Signal (for Multiplicative)", color='black', linewidth=2)
-plt.plot(t, true_signal_a, label="True Signal (for Additive)", color='gray', linestyle='--')
-plt.legend()
+plt.title(f"Original Components (MSE: {mse_mixed:.2f})")
+plt.plot(t, raw_mixed, label="Multiplicatively Mixed", color='lightgray')
+plt.plot(t, true_signal, label="True Signal", color='black', linewidth=2)
+plt.legend(loc="upper right")
 
 plt.subplot(3, 1, 2)
-plt.title(f"Multiplicative Test Case (Applied Log: {flag_m}, MSE: {mse_m:.2f})")
-plt.plot(t, mixed_mult, label="Raw Mixed", color='lightgray')
-plt.plot(t, true_signal_m, label="True Signal", color='black', linewidth=2)
-plt.plot(t, recovered_m, label="Recovered (Auto-Log)", color='red', linestyle='--')
+plt.title("Reference Signal vs Mixed Envelope")
+import pandas as pd
+rolling_std = pd.Series(raw_mixed).rolling(window=20, center=True).std().bfill().ffill().values
+plt.plot(t, rolling_std, label=f"Mixed Envelope (Variance Corr: {corr_std:.2f})", color='purple', linestyle='--')
+plt.plot(t, ref_channel, label="Artifact Reference Channel", color='orange', alpha=0.7)
 plt.legend(loc="upper right")
 
 plt.subplot(3, 1, 3)
-plt.title(f"Additive Test Case (Applied Log: {flag_a}, MSE: {mse_a:.2f})")
-plt.plot(t, mixed_add, label="Raw Mixed", color='lightgray')
-plt.plot(t, true_signal_a, label="True Signal", color='black', linewidth=2)
-plt.plot(t, recovered_a, label="Recovered (Auto-Linear)", color='blue', linestyle='--')
+plt.title(f"Linear M-CiSSA Recovery on Multiplicative Data (MSE: {mse_linear:.2f})")
+plt.plot(t, true_signal, label="True Signal", color='black', linewidth=2)
+plt.plot(t, recovered_linear, label="Recovered (Linear)", color='red', linestyle='--')
+plt.text(50, 4, "Notice the persistent amplitude wobble due to cross-modulation sidebands", color='red')
 plt.legend(loc="upper right")
 
 plt.tight_layout()

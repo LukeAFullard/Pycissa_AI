@@ -1,1 +1,0 @@
-from .multiplicative_transform import test_if_multiplicative, MultiplicativeTransformer
