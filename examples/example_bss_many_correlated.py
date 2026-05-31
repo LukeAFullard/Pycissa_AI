@@ -39,11 +39,11 @@ X = np.column_stack([raw_mixed, ref_1, ref_2, ref_3, ref_4])
 mcissa = MCissa(t, X)
 
 # Using actual Monte Carlo test to correctly identify significance in references.
-# K_surrogates=10 is used here to keep execution time short for the example.
+# K_surrogates=50 is used here to keep execution time short for the example.
 mcissa.auto_blind_source_separation(
     L=60,
     main_index=0,
-    K_surrogates=10,
+    K_surrogates=50,
     variance_threshold=0.01,
     alpha=0.05,
     trend_always_significant=False
