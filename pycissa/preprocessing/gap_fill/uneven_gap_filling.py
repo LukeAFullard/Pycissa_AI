@@ -1,14 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import warnings
-from scipy.interpolate import interp1d
+from scipy.interpolate import interp1d, PchipInterpolator
 
 def fill_uneven_timeseries(t: np.ndarray,
                            x: np.ndarray,
                            L_values: list[int],
                            dt: float,
                            gap_threshold: float,
-                           interp_method: str = 'cubic',
+                           interp_method: str = 'pchip',
                            optimization_metric: str = 'rmse',
                            r2_warning_threshold: float = 0.5,
                            plot: bool = True,
@@ -54,7 +54,10 @@ def fill_uneven_timeseries(t: np.ndarray,
     # Interpolate x onto t_even for initial guess
     valid = ~np.isnan(x)
     if np.sum(valid) > 1:
-        interpolator = interp1d(t[valid], x[valid], kind=interp_method, bounds_error=False, fill_value="extrapolate")
+        if interp_method.lower() == 'pchip':
+            interpolator = PchipInterpolator(t[valid], x[valid], extrapolate=True)
+        else:
+            interpolator = interp1d(t[valid], x[valid], kind=interp_method, bounds_error=False, fill_value="extrapolate")
         x_even_interp = interpolator(t_even)
     else:
         raise ValueError("Not enough valid data points to interpolate.")
@@ -126,7 +129,10 @@ def fill_uneven_timeseries(t: np.ndarray,
             # Interpolate each individual component back to the original timestamps and sum them up
             Z_back_interp = np.zeros((len(t), Z_retained.shape[1]))
             for i in range(Z_retained.shape[1]):
-                comp_interpolator = interp1d(t_even, Z_retained[:, i], kind=interp_method, bounds_error=False, fill_value="extrapolate")
+                if interp_method.lower() == 'pchip':
+                    comp_interpolator = PchipInterpolator(t_even, Z_retained[:, i], extrapolate=True)
+                else:
+                    comp_interpolator = interp1d(t_even, Z_retained[:, i], kind=interp_method, bounds_error=False, fill_value="extrapolate")
                 Z_back_interp[:, i] = comp_interpolator(t)
 
             x_back_interp = np.sum(Z_back_interp, axis=1)
@@ -234,7 +240,7 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                              L_values: list[int],
                              dt: float,
                              gap_threshold: float,
-                             interp_method: str = 'cubic',
+                             interp_method: str = 'pchip',
                              optimization_metric: str = 'rmse',
                              r2_warning_threshold: float = 0.5,
                              plot: bool = True,
@@ -287,7 +293,10 @@ def m_fill_uneven_timeseries(t: np.ndarray,
     for m in range(M):
         valid = ~np.isnan(x[:, m])
         if np.sum(valid) > 1:
-            interpolator = interp1d(t[valid], x[valid, m], kind=interp_method, bounds_error=False, fill_value="extrapolate")
+            if interp_method.lower() == 'pchip':
+                interpolator = PchipInterpolator(t[valid], x[valid, m], extrapolate=True)
+            else:
+                interpolator = interp1d(t[valid], x[valid, m], kind=interp_method, bounds_error=False, fill_value="extrapolate")
             x_even_interp[:, m] = interpolator(t_even)
         else:
             x_even_interp[:, m] = np.nan
@@ -358,7 +367,10 @@ def m_fill_uneven_timeseries(t: np.ndarray,
             Z_back_interp = np.zeros((len(t), M, Z_retained.shape[2]))
             for m in range(M):
                 for i in range(Z_retained.shape[2]):
-                    comp_interpolator = interp1d(t_even, Z_retained[:, m, i], kind=interp_method, bounds_error=False, fill_value="extrapolate")
+                    if interp_method.lower() == 'pchip':
+                        comp_interpolator = PchipInterpolator(t_even, Z_retained[:, m, i], extrapolate=True)
+                    else:
+                        comp_interpolator = interp1d(t_even, Z_retained[:, m, i], kind=interp_method, bounds_error=False, fill_value="extrapolate")
                     Z_back_interp[:, m, i] = comp_interpolator(t)
 
             x_back_interp = np.sum(Z_back_interp, axis=2)
