@@ -45,11 +45,16 @@ def initial_data_checks(t: np.ndarray, x: np.ndarray, use_32_bit: bool):
 
     if use_32_bit:
         new_x = np.empty_like(x, dtype=object)
-        for i, val in enumerate(x):
-            try:
-                new_x[i] = np.float32(val)
-            except (ValueError, OverflowError):
-                new_x[i] = val
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            for i, val in enumerate(x):
+                try:
+                    # Test asserts that overflow val (np.finfo(np.float64).max)
+                    # becomes np.inf (float32 type) instead of being skipped.
+                    new_x[i] = np.float32(val)
+                except (ValueError, OverflowError, TypeError):
+                    new_x[i] = val
         x = new_x
         # Try to convert the entire array to float32 if all elements are numbers,
         # otherwise leave as object type to accommodate mixed types.

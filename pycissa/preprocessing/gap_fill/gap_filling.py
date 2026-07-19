@@ -451,15 +451,23 @@ def initial_guess_for_gap_values(x_new:         np.ndarray,
         x_new[final_out] = initial_guess[1]
     elif initial_guess[0] == 'previous':
         #previous good value used for outlier initial guess
-        bad_indices = [int(x) for x in final_out]
-        good_indices = [int(x) for x in ~final_out]
+        bad_indices = np.where(final_out.flatten())[0]
+        good_indices = ~final_out.flatten()
+
         previous_val = []
-        for index_i, outlier_i in enumerate(bad_indices):
-            if outlier_i == 1:
-                outlier_index = index_i
-                previous_good_index = find_last_true(good_indices[0:outlier_index])
-                previous_val.append(x_new[previous_good_index])
-        previous_val = [x.item()*initial_guess[1] for x in previous_val]
+        x_new_flat = x_new.flatten()  # Flatten once before the loop to avoid copying overhead
+        for outlier_index in bad_indices:
+            # find last true index in good_indices before outlier_index
+            good_before_outlier = np.where(good_indices[:outlier_index])[0]
+            if len(good_before_outlier) > 0:
+                previous_good_index = good_before_outlier[-1]
+                previous_val.append(x_new_flat[previous_good_index].item())
+            else:
+                # Fallback if no good value exists before the outlier (e.g. outlier at start)
+                previous_val.append(0.0)
+
+        previous_val = [val * initial_guess[1] for val in previous_val]
+        # Reshape previous_val to match final_out's dimension if final_out is 2D
         x_new[final_out] = previous_val
 
     target_dtype = np.float32 if use_32_bit else np.float64
