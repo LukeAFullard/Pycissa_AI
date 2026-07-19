@@ -370,7 +370,8 @@ def find_outliers(x_new:                np.ndarray,
 ###############################################################################
 def remove_good_points_at_random(out:         np.ndarray,
                                  iter_i:      int,
-                                 test_number: float) -> tuple[np.ndarray,np.ndarray]:
+                                 test_number: float,
+                                 previous_random_points: np.ndarray = None) -> tuple[np.ndarray,np.ndarray]:
     '''
     Function to randomly select non-outlier points to remove to test the error of the gap filling method.
 
@@ -382,6 +383,8 @@ def remove_good_points_at_random(out:         np.ndarray,
         DESCRIPTION: Current iteration identifier
     test_number : float
         DESCRIPTION: Number of known points to remove in each iteration to help validate the error (the larger the longer the code will take to run but more accurate our error estimate)
+    previous_random_points : np.ndarray, optional
+        DESCRIPTION: The random points array from the previous iteration.
 
     Returns
     -------
@@ -394,11 +397,13 @@ def remove_good_points_at_random(out:         np.ndarray,
     # remove random data points to estimate error.
     # NOTE: This must be done after classifying points as outlier/missing data, otherwise we risk estimating the error using the outliers/missing data points!
     #Note, must also be done after defining max, median etc
-    if iter_i == 1:
+    if iter_i == 1 or previous_random_points is None:
         new_random_points = np.zeros_like(out, dtype=bool)
         indices = np.where(~out)[0]
-        selected = np.random.choice(indices, size=test_number, replace=False)
+        selected = np.random.choice(indices, size=int(test_number), replace=False)
         new_random_points[selected] = True
+    else:
+        new_random_points = previous_random_points
 
     if len(out) == 0:
         final_out = out
@@ -1198,6 +1203,7 @@ def fill_timeseries_gaps(t:                          np.ndarray,
         if testrepeats == test_repeats:
             test_number = 0
         iter_i = 1
+        new_random_points = None
 
         # 3c. run through while loop.
         while iter_i>0:
@@ -1207,7 +1213,7 @@ def fill_timeseries_gaps(t:                          np.ndarray,
                 warnings.warn("WARNING: No gaps found in the data. Returning the original (unmodified) time-series.")
                 return x,None,None,None,None,None,None,None,None
             # 3c-ii. Randomly select non-outlier points to evaluate error in gap filling
-            new_random_points, final_out  = remove_good_points_at_random(out,iter_i,test_number)
+            new_random_points, final_out  = remove_good_points_at_random(out,iter_i,test_number,new_random_points)
 
             # 3c-iii. Add initial guess to outlier/nan/ gap points
             x_new = initial_guess_for_gap_values(x_new,final_out,initial_guess,mu,mumax,use_32_bit)
@@ -1370,6 +1376,7 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
             test_number = 0
 
         iter_i = 1
+        new_random_points_mask_full = None
 
         while iter_i > 0:
             out_mask = np.zeros(x_new.shape, dtype=bool)
@@ -1394,13 +1401,16 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
             new_random_points_mask = np.zeros(x_new.shape, dtype=bool)
 
             for m in range(M):
-                nrp, f_o = remove_good_points_at_random(out_mask[:, m], iter_i, test_number)
+                prev_mask_m = new_random_points_mask_full[:, m] if new_random_points_mask_full is not None else None
+                nrp, f_o = remove_good_points_at_random(out_mask[:, m], iter_i, test_number, prev_mask_m)
                 new_random_points_mask[:, m] = nrp
                 final_out_mask[:, m] = f_o
 
                 # add initial guess
                 x_new_m = initial_guess_for_gap_values(x_new[:, m], f_o, initial_guess, mu_m[m], mumax_m[m], use_32_bit)
                 x_new[:, m] = x_new_m
+
+            new_random_points_mask_full = new_random_points_mask.copy()
 
             current_error = convergence_error + 1.0
             while_iter = 0
