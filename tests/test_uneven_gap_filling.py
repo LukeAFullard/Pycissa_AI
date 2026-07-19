@@ -51,6 +51,35 @@ def test_fill_uneven_timeseries_no_gaps_warning():
             plot=False
         )
 
+def test_fill_uneven_timeseries_poor_fit_fallback():
+    # Generate data designed to fail poorly with cubic interpolation across a gap
+    np.random.seed(42)
+    t = np.sort(np.random.uniform(0, 50, 40))
+    x = np.sin(t) + np.random.normal(0, 0.05, 40)
+    gap_mask = (t > 20) & (t < 30)
+    t = t[~gap_mask]
+    x = x[~gap_mask]
+
+    # This should internally trigger the fallback to linear and avoid warning/bad R2
+    import warnings
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        res = fill_uneven_timeseries(
+            t=t,
+            x=x,
+            L_values=[5, 10],
+            dt=1.0,
+            gap_threshold=1.5,
+            interp_method='cubic',
+            plot=False
+        )
+        for warn in w:
+            if "Poor fit" in str(warn.message):
+                pytest.fail(f"Poor fit warning was not suppressed by fallback: {warn.message}")
+
+    assert res['r2'] > 0.5
+
+
 def test_fill_uneven_timeseries_ccc():
     np.random.seed(42)
     t = np.sort(np.random.uniform(0, 50, 40))
