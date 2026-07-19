@@ -178,8 +178,15 @@ def fill_uneven_timeseries(t: np.ndarray,
     if best_L is None:
         raise ValueError("Could not find a successful L from L_values.")
 
-    # 4. Warnings
+    # 4. Edge Case Fallback & Warnings
     if best_r2 < r2_warning_threshold:
+        if interp_method != 'linear':
+            fallback_res = fill_uneven_timeseries(t=t, x=x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                                  interp_method='linear', optimization_metric=optimization_metric,
+                                                  r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
+            if fallback_res['r2'] > best_r2:
+                return fallback_res
+
         warnings.warn(f"Poor fit detected for best L={best_L}. R-squared = {best_r2:.4f} < {r2_warning_threshold}")
 
     # 5. Plotting
@@ -402,8 +409,15 @@ def m_fill_uneven_timeseries(t: np.ndarray,
     if best_L is None:
         raise ValueError("Could not find a successful L from L_values.")
 
-    # 4. Warnings
+    # 4. Edge Case Fallback & Warnings
     if best_r2 < r2_warning_threshold:
+        if interp_method != 'linear':
+            fallback_res = m_fill_uneven_timeseries(t=t, x=x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                                    interp_method='linear', optimization_metric=optimization_metric,
+                                                    r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
+            if fallback_res['r2'] > best_r2:
+                return fallback_res
+
         warnings.warn(f"Poor fit detected for best L={best_L}. R-squared = {best_r2:.4f} < {r2_warning_threshold}")
 
     # 5. Plotting
