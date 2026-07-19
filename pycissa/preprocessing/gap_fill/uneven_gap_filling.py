@@ -100,12 +100,12 @@ def fill_uneven_timeseries(t: np.ndarray,
                 model.pre_fill_gaps(L=L,
                                     component_selection_method=comp_method,
                                     eigenvalue_proportion=prop,
-                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
                 # After filling gaps, fit the final model
-                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
             else:
                 # We run a full CiSSA spectral decomposition and reconstruction on the initial guess
-                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
 
             # Use grouping logic to filter the components
             try:
@@ -182,17 +182,43 @@ def fill_uneven_timeseries(t: np.ndarray,
             continue
 
     if best_L is None:
-        raise ValueError("Could not find a successful L from L_values.")
+        if kwargs.get('_is_fallback', False):
+            raise ValueError("Could not find a successful L from L_values in fallback mode.")
+        else:
+            raise ValueError("Could not find a successful L from L_values.")
+
+    is_fallback = kwargs.pop('_is_fallback', False)
 
     # 4. Edge Case Fallback & Warnings
-    if best_r2 < r2_warning_threshold:
-        if interp_method != 'linear':
-            fallback_res = fill_uneven_timeseries(t=t, x=x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
-                                                  interp_method='linear', optimization_metric=optimization_metric,
-                                                  r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
-            if fallback_res['r2'] > best_r2:
-                return fallback_res
+    if best_r2 < r2_warning_threshold and not is_fallback:
+        try:
+            if interp_method != 'linear':
+                fallback_res = fill_uneven_timeseries(t=t, x=x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                                      interp_method='linear', optimization_metric=optimization_metric,
+                                                      r2_warning_threshold=r2_warning_threshold, plot=plot, _is_fallback=True, **kwargs)
+                if fallback_res['r2'] > best_r2:
+                    if fallback_res['r2'] < r2_warning_threshold:
+                        warnings.warn(f"Poor fit detected for best L={fallback_res['best_L']}. R-squared = {fallback_res['r2']:.4f} < {r2_warning_threshold}")
+                    return fallback_res
+        except Exception:
+            pass
 
+        # Second fallback for extreme sparsity: don't drop any components
+        if kwargs.get('component_selection_method', 'drop_smallest_proportion') != 'none':
+            try:
+                kwargs_keep = kwargs.copy()
+                kwargs_keep['component_selection_method'] = 'none'
+                fallback_res_keep = fill_uneven_timeseries(t=t, x=x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                                           interp_method='linear', optimization_metric=optimization_metric,
+                                                           r2_warning_threshold=r2_warning_threshold, plot=plot, _is_fallback=True, **kwargs_keep)
+                if fallback_res_keep['r2'] > best_r2:
+                    if fallback_res_keep['r2'] < r2_warning_threshold:
+                        warnings.warn(f"Poor fit detected for best L={fallback_res_keep['best_L']}. R-squared = {fallback_res_keep['r2']:.4f} < {r2_warning_threshold}")
+                    return fallback_res_keep
+            except Exception:
+                pass
+
+        # If we reach here, even the fallbacks are poor (or failed). We just return the best we have, but warn.
         warnings.warn(f"Poor fit detected for best L={best_L}. R-squared = {best_r2:.4f} < {r2_warning_threshold}")
 
     # 5. Plotting
@@ -342,12 +368,12 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                                     component_selection_method=comp_method,
                                     eigenvalue_proportion=prop,
                                     multivariate=True,
-                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
                 # After filling gaps, fit the final model
-                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
             else:
                 # We run a full M-CiSSA spectral decomposition and reconstruction on the initial guess
-                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
 
             try:
                 # Manually replicate component dropping since m_select_components doesn't exist
@@ -419,17 +445,43 @@ def m_fill_uneven_timeseries(t: np.ndarray,
             continue
 
     if best_L is None:
-        raise ValueError("Could not find a successful L from L_values.")
+        if kwargs.get('_is_fallback', False):
+            raise ValueError("Could not find a successful L from L_values in fallback mode.")
+        else:
+            raise ValueError("Could not find a successful L from L_values.")
+
+    is_fallback = kwargs.pop('_is_fallback', False)
 
     # 4. Edge Case Fallback & Warnings
-    if best_r2 < r2_warning_threshold:
-        if interp_method != 'linear':
-            fallback_res = m_fill_uneven_timeseries(t=t, x=x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
-                                                    interp_method='linear', optimization_metric=optimization_metric,
-                                                    r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
-            if fallback_res['r2'] > best_r2:
-                return fallback_res
+    if best_r2 < r2_warning_threshold and not is_fallback:
+        try:
+            if interp_method != 'linear':
+                fallback_res = m_fill_uneven_timeseries(t=t, x=x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                                        interp_method='linear', optimization_metric=optimization_metric,
+                                                        r2_warning_threshold=r2_warning_threshold, plot=plot, _is_fallback=True, **kwargs)
+                if fallback_res['r2'] > best_r2:
+                    if fallback_res['r2'] < r2_warning_threshold:
+                        warnings.warn(f"Poor fit detected for best L={fallback_res['best_L']}. R-squared = {fallback_res['r2']:.4f} < {r2_warning_threshold}")
+                    return fallback_res
+        except Exception:
+            pass
 
+        # Second fallback for extreme sparsity: don't drop any components
+        if kwargs.get('component_selection_method', 'drop_smallest_proportion') != 'none':
+            try:
+                kwargs_keep = kwargs.copy()
+                kwargs_keep['component_selection_method'] = 'none'
+                fallback_res_keep = m_fill_uneven_timeseries(t=t, x=x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
+                                                             interp_method='linear', optimization_metric=optimization_metric,
+                                                             r2_warning_threshold=r2_warning_threshold, plot=plot, _is_fallback=True, **kwargs_keep)
+                if fallback_res_keep['r2'] > best_r2:
+                    if fallback_res_keep['r2'] < r2_warning_threshold:
+                        warnings.warn(f"Poor fit detected for best L={fallback_res_keep['best_L']}. R-squared = {fallback_res_keep['r2']:.4f} < {r2_warning_threshold}")
+                    return fallback_res_keep
+            except Exception:
+                pass
+
+        # If we reach here, even the fallbacks are poor. We just return the best we have, but warn.
         warnings.warn(f"Poor fit detected for best L={best_L}. R-squared = {best_r2:.4f} < {r2_warning_threshold}")
 
     # 5. Plotting
