@@ -419,12 +419,12 @@ class MCissa:
                                    L_values: list[int],
                                    dt: float,
                                    gap_threshold: float,
-                                   eps_values: list[float] = None,
                                    interp_method: str = 'cubic',
                                    optimization_metric: str = 'rmse',
                                    r2_warning_threshold: float = 0.5,
                                    plot: bool = True,
                                    multivariate: bool = True,
+                                   update_state: bool = True,
                                    **kwargs):
         '''
         Multivariate implementation of uneven gap filling. By default uses full
@@ -441,17 +441,19 @@ class MCissa:
             from pycissa.preprocessing.gap_fill.uneven_gap_filling import m_fill_uneven_timeseries
 
             res = m_fill_uneven_timeseries(t=t_uneven, x=self.x, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
-                                           eps_values=eps_values, interp_method=interp_method,
+                                           interp_method=interp_method,
                                            optimization_metric=optimization_metric,
                                            r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
 
-            self.t = res['t_even']
-            self.x = res['x_even_filled']
+            if update_state:
+                self.t = res['t_even']
+                self.x = res['x_even_filled']
 
-            from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
-            self.isnan = detect_nan_data(self.x)
+                from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+                self.isnan = detect_nan_data(self.x)
 
             # Replicate metrics across M channels for consistent internal structure
+            self.uneven_gap_fill_results = res
             self.uneven_gap_fill_best_L = [res['best_L']] * M
             self.uneven_gap_fill_rmse = [res['rmse']] * M
             self.uneven_gap_fill_r2 = [res['r2']] * M
@@ -471,7 +473,6 @@ class MCissa:
             from pycissa.preprocessing.gap_fill.uneven_gap_filling import fill_uneven_timeseries
 
             best_L_list = []
-            best_eps_list = []
             rmse_list = []
             r2_list = []
             ccc_list = []
@@ -488,18 +489,20 @@ class MCissa:
                     continue
 
                 res = fill_uneven_timeseries(t=t_uneven, x=x_m, L_values=L_values, dt=dt, gap_threshold=gap_threshold,
-                                            eps_values=eps_values, interp_method=interp_method,
+                                            interp_method=interp_method,
                                             optimization_metric=optimization_metric,
                                             r2_warning_threshold=r2_warning_threshold, plot=plot, **kwargs)
 
                 if t_even_final is None:
                     t_even_final = res['t_even']
                     x_even_filled_full = np.zeros((len(t_even_final), M))
+                    self.uneven_gap_fill_results = res.copy()
+                    self.uneven_gap_fill_results['x_even_filled'] = np.zeros((len(t_even_final), M))
 
                 x_even_filled_full[:, m] = res['x_even_filled']
+                self.uneven_gap_fill_results['x_even_filled'][:, m] = res['x_even_filled']
 
                 best_L_list.append(res['best_L'])
-                best_eps_list.append(res['best_eps'])
                 rmse_list.append(res['rmse'])
                 r2_list.append(res['r2'])
                 ccc_list.append(res['ccc'])
@@ -511,11 +514,12 @@ class MCissa:
                         self.figures['mcissa']['figure_uneven_gap_fill'] = []
                     self.figures['mcissa']['figure_uneven_gap_fill'].append(res['fig'])
 
-            self.t = t_even_final
-            self.x = x_even_filled_full
+            if update_state:
+                self.t = t_even_final
+                self.x = x_even_filled_full
 
-            from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
-            self.isnan = detect_nan_data(self.x)
+                from pycissa.preprocessing.data_cleaning.data_cleaning import detect_nan_data
+                self.isnan = detect_nan_data(self.x)
 
             self.uneven_gap_fill_best_L = best_L_list
             self.uneven_gap_fill_rmse = rmse_list
