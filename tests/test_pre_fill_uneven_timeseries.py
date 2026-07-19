@@ -2,7 +2,7 @@ import numpy as np
 from pycissa import Cissa
 import warnings
 
-def test_pre_fill_uneven_timeseries_center_data_true():
+def test_pre_fill_uneven_timeseries_update_state_true():
     # Large offset
     t = np.array([1.0, 2.5, 3.8, 5.9, 7.2, 8.5, 9.8, 11.1, 12.5, 13.8])
     x = np.array([10.0, 25.0, 38.0, 59.0, 72.0, 85.0, 98.0, 111.0, 125.0, 138.0])
@@ -13,7 +13,7 @@ def test_pre_fill_uneven_timeseries_center_data_true():
         L_values=[3],
         dt=1.0,
         gap_threshold=0.5,
-        center_data=True,
+        update_state=True,
         plot=False,
         outliers=['nan_only', None]
     )
@@ -24,7 +24,7 @@ def test_pre_fill_uneven_timeseries_center_data_true():
     np.testing.assert_array_almost_equal(cissa.t, expected_t)
     assert cissa.x.shape == cissa.t.shape
 
-def test_pre_fill_uneven_timeseries_center_data_false():
+def test_pre_fill_uneven_timeseries_update_state_false():
     # Large offset
     t = np.array([1.0, 2.5, 3.8, 5.9, 7.2, 8.5, 9.8, 11.1, 12.5, 13.8])
     x = np.array([10.0, 25.0, 38.0, 59.0, 72.0, 85.0, 98.0, 111.0, 125.0, 138.0])
@@ -37,7 +37,7 @@ def test_pre_fill_uneven_timeseries_center_data_false():
         L_values=[3],
         dt=1.0,
         gap_threshold=0.5,
-        center_data=False,
+        update_state=False,
         plot=False,
         outliers=['nan_only', None]
     )
@@ -60,7 +60,7 @@ def test_pre_fill_uneven_timeseries_with_gaps():
         L_values=[3],
         dt=1.0,
         gap_threshold=0.5,
-        center_data=True,
+        update_state=True,
         plot=False,
         outliers=['nan_only', None]
     )

@@ -8,7 +8,6 @@ def fill_uneven_timeseries(t: np.ndarray,
                            L_values: list[int],
                            dt: float,
                            gap_threshold: float,
-                           eps_values: list[float] = None,
                            interp_method: str = 'cubic',
                            optimization_metric: str = 'rmse',
                            r2_warning_threshold: float = 0.5,
@@ -31,8 +30,6 @@ def fill_uneven_timeseries(t: np.ndarray,
     gap_threshold : float
         Max distance to a real data point on the even grid before it is considered a gap (NaN).
         (Note: Kept for signature compatibility, but spectral reconstruction acts on entire grid).
-    eps_values : list[float], optional
-        List of convergence epsilon values to optimize over. If None, defaults to [1.0].
     interp_method : str, optional
         Interpolation method ('linear', 'nearest', 'nearest-up', 'zero', 'slinear', 'quadratic', 'cubic', 'previous', or 'next'). The default is 'cubic'.
     optimization_metric : str, optional
@@ -62,22 +59,20 @@ def fill_uneven_timeseries(t: np.ndarray,
     else:
         raise ValueError("Not enough valid data points to interpolate.")
 
-    # We skip NaN gap threshold injection because we want CiSSA to optimize the ENTIRE grid
-    # using spectral degrees of freedom.
     x_even_guess = x_even_interp.copy()
 
-    # Mock gaps_mask warning for backward compatibility
+    # Apply gap_threshold masking
     idx = np.searchsorted(t, t_even)
     idx = np.clip(idx, 1, len(t) - 1)
     min_distances = np.minimum(np.abs(t_even - t[idx - 1]), np.abs(t_even - t[idx]))
-    if not np.any(min_distances > gap_threshold):
+
+    gaps_mask = min_distances > gap_threshold
+    if np.any(gaps_mask):
+        x_even_guess[gaps_mask] = np.nan
+    else:
         warnings.warn("No gaps found based on the given gap_threshold. The entire even grid is considered known data.")
 
-    if eps_values is None:
-        eps_values = [1.0]
-
     best_L = None
-    best_eps = None
     best_x_even_filled = None
     best_metric_val = np.inf if optimization_metric.lower() == 'rmse' else -np.inf
     best_rmse = np.inf
@@ -91,25 +86,25 @@ def fill_uneven_timeseries(t: np.ndarray,
 
     # 3. Optimization Loop
     for L in L_values:
-      for eps in eps_values:
         try:
-            # We run a full CiSSA spectral decomposition and reconstruction on the initial guess
             model = Cissa(t_even.copy(), x_even_guess.copy())
-            model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
 
-            # Use grouping logic to filter the components
             comp_method = kwargs.get('component_selection_method', 'drop_smallest_proportion')
             prop = kwargs.get('eigenvalue_proportion', 0.95)
 
-            # Since auto_cissa doesn't easily return the raw filtered Zs directly in a callable way without overwriting x,
-            # we can just use pre_fill_gaps to do the heavy lifting of extracting significant components,
-            # even though we aren't filling gaps - we pass it the data and let it reconstruct.
-            # Actually, the user asked to apply spectral decomposition, keep components, and interpolate back.
+            if np.any(np.isnan(x_even_guess)):
+                # Run iterative spectral filling
+                model.pre_fill_gaps(L=L,
+                                    component_selection_method=comp_method,
+                                    eigenvalue_proportion=prop,
+                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+                # After filling gaps, fit the final model
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+            else:
+                # We run a full CiSSA spectral decomposition and reconstruction on the initial guess
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
 
-            # It's cleaner to let the model run pre_fill_gaps (which internally loops and reconstructs)
-            # but wait, if there are NO NaNs in x_even_guess, pre_fill_gaps returns immediately!
-            # So to force spectral decomposition, we MUST extract the components directly.
-
+            # Use grouping logic to filter the components
             try:
                 # `Cissa` uses `model.Z`, not `model.Z_stacked`
                 if comp_method == 'drop_smallest_proportion':
@@ -172,13 +167,12 @@ def fill_uneven_timeseries(t: np.ndarray,
                 best_r2 = r2
                 best_ccc = ccc
                 best_L = L
-                best_eps = eps
                 best_x_even_filled = x_even_filled
                 best_x_back_interp = x_back_interp
                 best_Z_back_interp = Z_back_interp
 
         except Exception as e:
-            warnings.warn(f"Spectral optimization failed for L={L}, eps={eps} with error: {str(e)}")
+            warnings.warn(f"Spectral optimization failed for L={L} with error: {str(e)}")
             continue
 
     if best_L is None:
@@ -212,7 +206,6 @@ def fill_uneven_timeseries(t: np.ndarray,
 
     ret_dict = {
         'best_L': best_L,
-        'best_eps': best_eps,
         'rmse': best_rmse,
         'r2': best_r2,
         'ccc': best_ccc,
@@ -234,7 +227,6 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                              L_values: list[int],
                              dt: float,
                              gap_threshold: float,
-                             eps_values: list[float] = None,
                              interp_method: str = 'cubic',
                              optimization_metric: str = 'rmse',
                              r2_warning_threshold: float = 0.5,
@@ -257,8 +249,6 @@ def m_fill_uneven_timeseries(t: np.ndarray,
         Grid spacing for the evenly sampled grid.
     gap_threshold : float
         Kept for signature compatibility.
-    eps_values : list[float], optional
-        List of convergence epsilon values to optimize over. If None, defaults to [1.0].
     interp_method : str, optional
         Interpolation method. Default is 'cubic'.
     optimization_metric : str, optional
@@ -297,18 +287,19 @@ def m_fill_uneven_timeseries(t: np.ndarray,
 
     x_even_guess = x_even_interp.copy()
 
-    # Mock gaps_mask warning for backward compatibility
+    # Apply gap_threshold masking
     idx = np.searchsorted(t, t_even)
     idx = np.clip(idx, 1, len(t) - 1)
     min_distances = np.minimum(np.abs(t_even - t[idx - 1]), np.abs(t_even - t[idx]))
-    if not np.any(min_distances > gap_threshold):
+
+    gaps_mask = min_distances > gap_threshold
+    if np.any(gaps_mask):
+        # Broadcast mask to (T, M)
+        x_even_guess[np.tile(gaps_mask[:, np.newaxis], (1, M))] = np.nan
+    else:
         warnings.warn("No gaps found based on the given gap_threshold. The entire even grid is considered known data.")
 
-    if eps_values is None:
-        eps_values = [1.0]
-
     best_L = None
-    best_eps = None
     best_x_even_filled = None
     best_metric_val = np.inf if optimization_metric.lower() == 'rmse' else -np.inf
     best_rmse = np.inf
@@ -323,15 +314,24 @@ def m_fill_uneven_timeseries(t: np.ndarray,
 
     # 3. Optimization Loop
     for L in L_values:
-      for eps in eps_values:
         try:
-            # We run a full M-CiSSA spectral decomposition and reconstruction on the initial guess
             model = MCissa(t_even.copy(), x_even_guess.copy())
-            model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
 
-            # Filter components using multivariate selection logic
             comp_method = kwargs.get('component_selection_method', 'drop_smallest_proportion')
             prop = kwargs.get('eigenvalue_proportion', 0.95)
+
+            if np.any(np.isnan(x_even_guess)):
+                # Run iterative spectral filling
+                model.pre_fill_gaps(L=L,
+                                    component_selection_method=comp_method,
+                                    eigenvalue_proportion=prop,
+                                    multivariate=True,
+                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+                # After filling gaps, fit the final model
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
+            else:
+                # We run a full M-CiSSA spectral decomposition and reconstruction on the initial guess
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha']})
 
             try:
                 # Manually replicate component dropping since m_select_components doesn't exist
@@ -392,12 +392,11 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                 best_r2 = r2
                 best_ccc = ccc
                 best_L = L
-                best_eps = eps
                 best_x_even_filled = x_even_filled
                 best_x_back_interp = x_back_interp
 
         except Exception as e:
-            warnings.warn(f"Spectral optimization failed for L={L}, eps={eps} with error: {str(e)}")
+            warnings.warn(f"Spectral optimization failed for L={L} with error: {str(e)}")
             continue
 
     if best_L is None:
@@ -431,7 +430,6 @@ def m_fill_uneven_timeseries(t: np.ndarray,
 
     ret_dict = {
         'best_L': best_L,
-        'best_eps': best_eps,
         'rmse': best_rmse,
         'r2': best_r2,
         'ccc': best_ccc,

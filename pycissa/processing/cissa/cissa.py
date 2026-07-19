@@ -526,15 +526,14 @@ class Cissa:
                                    L_values: list[int],
                                    dt: float,
                                    gap_threshold: float,
-                                   eps_values: list[float] = None,
                                    interp_method: str = 'cubic',
                                    optimization_metric: str = 'rmse',
                                    r2_warning_threshold: float = 0.5,
                                    plot: bool = True,
-                                   center_data: bool = False,
+                                   update_state: bool = True,
                                    **kwargs):
         """
-        Wrapper for fill_uneven_timeseries that optionally updates the Cissa object's data to the even grid.
+        Wrapper for fill_uneven_timeseries that updates the Cissa object's data to the evenly sampled grid.
 
         Parameters
         ----------
@@ -544,8 +543,6 @@ class Cissa:
             Grid spacing for the evenly sampled grid.
         gap_threshold : float
             Max distance to a real data point on the even grid before it is considered a gap (NaN).
-        eps_values : list[float], optional
-            List of convergence epsilon values to optimize over. If None, defaults to [1.0].
         interp_method : str, optional
             Interpolation method. The default is 'cubic'.
         optimization_metric : str, optional
@@ -554,8 +551,8 @@ class Cissa:
             R-squared threshold below which a warning is issued. Default is 0.5.
         plot : bool, optional
             Whether to produce diagnostic plots.
-        center_data : bool, optional
-            If True, replaces self.t and self.x with the generated evenly sampled and filled grid.
+        update_state : bool, optional
+            If True, replaces self.t and self.x with the generated evenly sampled and filled grid. Default is True.
         **kwargs :
             Additional arguments passed to fill_timeseries_gaps.
 
@@ -571,7 +568,6 @@ class Cissa:
                                          L_values=L_values,
                                          dt=dt,
                                          gap_threshold=gap_threshold,
-                                         eps_values=eps_values,
                                          interp_method=interp_method,
                                          optimization_metric=optimization_metric,
                                          r2_warning_threshold=r2_warning_threshold,
@@ -585,7 +581,7 @@ class Cissa:
 
         self.uneven_gap_fill_results = results
 
-        if center_data:
+        if update_state:
             self.t = results['t_even']
             self.x = results['x_even_filled']
 
@@ -595,7 +591,7 @@ class Cissa:
 
             self.information_text += f'''
         ------------------------------------------------------
-        Data centered to evenly sampled grid.
+        Data updated to evenly sampled grid.
         '''
 
         return self
