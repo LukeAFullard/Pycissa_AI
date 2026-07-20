@@ -117,13 +117,70 @@ def m_classify_monte_carlo_non_significant_components(tempresults):
     periodic = []
     noise = []
 
-    for key_j in tempresults['components'].keys():
-        mc_pass = tempresults['components'][key_j]['monte_carlo'][surrogate_type]['alpha'][alpha]['pass']
+    components = tempresults.get('components', {})
+    if not components and 'mcissa' in tempresults:
+        components = tempresults['mcissa'].get('components', {})
+
+    for key_j in components.keys():
+        mc_pass = components[key_j]['monte_carlo'][surrogate_type]['alpha'][alpha]['pass']
         if key_j == 'trend':
             trend.append(0)
         else:
             if mc_pass:
-                periodic.append(tempresults['components'][key_j]['array_position'])
+                periodic.append(components[key_j]['array_position'])
             else:
-                noise.append(tempresults['components'][key_j]['array_position'])
+                noise.append(components[key_j]['array_position'])
     return trend, periodic, noise
+
+def m_drop_monte_carlo_non_significant_components(Z_stacked, psd, L, x_new, **kwargs):
+    from pycissa.utilities.generate_cissa_result_dictionary import generate_m_results_dictionary
+    from pycissa.postprocessing.monte_carlo.m_montecarlo import run_m_monte_carlo_test
+    from pycissa.postprocessing.monte_carlo.montecarlo import prepare_monte_carlo_kwargs
+    from pycissa.postprocessing.grouping.m_grouping_functions import m_classify_monte_carlo_non_significant_components
+
+    K_surrogates, surrogates, seed, sided_test, remove_trend, trend_always_significant, A_small_shuffle, generate_toeplitz_matrix = prepare_monte_carlo_kwargs(kwargs)
+
+    # Check if alpha is passed explicitly via kwargs
+    alpha = kwargs.get('alpha', 0.05)
+
+    temp_results = generate_m_results_dictionary(Z_stacked, psd, L)
+
+    # We must ensure model parameters contains monte_carlo variables for the classification function later
+    temp_results['model parameters'] = {
+        'monte_carlo_surrogate_type': surrogates,
+        'monte_carlo_alpha': alpha,
+        'monte_carlo_sided_test': sided_test
+    }
+
+    extension_type = kwargs.get('extension_type', 'AR_LR')
+
+    temp_result, _ = run_m_monte_carlo_test(
+        x=x_new,
+        L=L,
+        psd=psd,
+        results=temp_results,
+        alpha=alpha,
+        K_surrogates=K_surrogates,
+        surrogates=surrogates,
+        seed=seed,
+        sided_test=sided_test,
+        remove_trend=remove_trend,
+        trend_always_significant=trend_always_significant,
+        extension_type=extension_type,
+        extend_left=True,
+        extend_right=True,
+        plot_figure=False
+    )
+
+    temp_result['model parameters'] = temp_results['model parameters']
+
+    trend, periodic, noise = m_classify_monte_carlo_non_significant_components(temp_result)
+
+    keep_indices = trend + periodic
+
+    T, M = x_new.shape
+    temp_array = np.zeros((T, M))
+    for i in keep_indices:
+        temp_array += Z_stacked[:, :, i]
+
+    return temp_array

@@ -287,9 +287,14 @@ def check_for_significance(result:                   dict,
     signal_psd       = []
     surrogate_psd    = []
     result_ = copy.deepcopy(result)
-    for results_key_k in result_.get('components').keys():
+
+    components = result_.get('components', {})
+    if not components and 'mcissa' in result_:
+        components = result_['mcissa'].get('components', {})
+
+    for results_key_k in components.keys():
         allowed_larger_surrogates = K_surrogates - 1
-        key_array_position = result_.get('components').get(results_key_k).get('array_position')
+        key_array_position = components.get(results_key_k).get('array_position')
         psd_signal = pzz[key_array_position]
 
         #find how many of the surogate data series have a larger psd than the original signal
@@ -297,18 +302,18 @@ def check_for_significance(result:                   dict,
         smaller_surrogates = [x for x in surrogate_results.get(results_key_k) if x < psd_signal]
 
         #update results dictionary and return it
-        result_.get('components').get(results_key_k).setdefault('monte_carlo', {})
-        result_.get('components').get(results_key_k).get('monte_carlo').setdefault(surrogates, {})
-        result_.get('components').get(results_key_k).get('monte_carlo').get(surrogates).setdefault('alpha', {})
+        components.get(results_key_k).setdefault('monte_carlo', {})
+        components.get(results_key_k).get('monte_carlo').setdefault(surrogates, {})
+        components.get(results_key_k).get('monte_carlo').get(surrogates).setdefault('alpha', {})
 
-        result_.get('components').get(results_key_k).get('monte_carlo').get(surrogates).get('alpha').setdefault(alpha,{})
+        components.get(results_key_k).get('monte_carlo').get(surrogates).get('alpha').setdefault(alpha,{})
 
         if sided_test == 'one sided':
             test_pass = len(larger_surrogates) <= allowed_larger_surrogates
         else:
             test_pass = (len(larger_surrogates) <= allowed_larger_surrogates) or (len(smaller_surrogates) <= allowed_larger_surrogates)
 
-        result_.get('components').get(results_key_k).get('monte_carlo').get(surrogates).get('alpha').get(alpha).update({
+        components.get(results_key_k).get('monte_carlo').get(surrogates).get('alpha').get(alpha).update({
             'signal_psd':psd_signal,
             'surrogate_psd':surrogate_results.get(results_key_k),
             'pass': test_pass
@@ -318,11 +323,11 @@ def check_for_significance(result:                   dict,
         sorted_surrogates = sorted(surrogate_results.get(results_key_k))
         surrogate_index = -1 - allowed_larger_surrogates
 
-        plot_period.append(result_.get('components').get(results_key_k).get('unitless period (number of timesteps)'))
+        plot_period.append(components.get(results_key_k).get('unitless period (number of timesteps)'))
         signal_psd.append(psd_signal)
         surrogate_psd.append(sorted_surrogates[surrogate_index])
-    if trend_always_significant:
-        result_.get('components').get('trend').get('monte_carlo').get(surrogates).get('alpha').get(alpha).update({'pass':True})
+    if trend_always_significant and 'trend' in components:
+        components.get('trend').get('monte_carlo').get(surrogates).get('alpha').get(alpha).update({'pass':True})
 
     return result_,plot_period,surrogate_psd,signal_psd
 
