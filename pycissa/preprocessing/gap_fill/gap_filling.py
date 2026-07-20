@@ -80,9 +80,9 @@ def validate_input_parameters(x:              np.ndarray,
     '''
     #check L is an integer, extension_type a string
     if not type(extension_type) == str:
-        raise('Input parameter "H" should be a string')
+        raise TypeError('Input parameter "extension_type" should be a string')
     if not type(L) == int:
-        raise('Input parameter "L" should be an integer')
+        raise TypeError('Input parameter "L" should be an integer')
 
     #check x is a numpy array
     if not type(x) is np.ndarray:
@@ -102,17 +102,17 @@ def validate_input_parameters(x:              np.ndarray,
 
     #check outliers, errors are length 2 lists
     if not type(outliers) is list:
-        raise('Input parameter "outliers" should be a length 2 list')
+        raise TypeError('Input parameter "outliers" should be a list')
     if not len(outliers) == 2:
-        raise('Input parameter "outliers" should be a length 2 list')
+        raise ValueError('Input parameter "outliers" should be a length 2 list')
     if not type(initial_guess) is list:
-        raise('Input parameter "initial_guess" should be a length 2 list')
+        raise TypeError('Input parameter "initial_guess" should be a list')
     if not len(initial_guess) == 2:
-        raise('Input parameter "initial_guess" should be a length 2 list')
+        raise ValueError('Input parameter "initial_guess" should be a length 2 list')
     if not type(convergence) is list:
-        raise('Input parameter "convergence" should be a length 2 list')
+        raise TypeError('Input parameter "convergence" should be a list')
     if not len(convergence) == 2:
-        raise('Input parameter "convergence" should be a length 2 list')
+        raise ValueError('Input parameter "convergence" should be a length 2 list')
 
     return x
 
@@ -202,7 +202,7 @@ def initialise_outlier_type(outliers: list):
         g_t = outliers[1]
     elif outliers[0] == '<>': #here we have to be between two predefined limits
         if not len(outliers[1]) ==2:
-            raise('If input parameter outliers == <> then the second entry in the list should be another length 2 list')
+            raise ValueError('If input parameter outliers == <> then the second entry in the list should be another length 2 list')
         l_t = outliers[1][0]
         g_t = outliers[1][1]
     elif outliers[0] == 'nan_only':
@@ -210,6 +210,18 @@ def initialise_outlier_type(outliers: list):
     else:
         raise ValueError(f'Outlier type: {outliers[0]} not recognised')
     return k,l_t,g_t
+
+###############################################################################
+###############################################################################
+def compute_percentage_error(true_vals: np.ndarray, pred_vals: np.ndarray) -> np.ndarray:
+    """
+    Computes percentage error, normalized against the true ground truth values.
+    Returns np.nan where divide-by-zero or infinity occurs.
+    """
+    with np.errstate(divide='ignore', invalid='ignore'):
+        err_pct = 100 * (np.abs(true_vals - pred_vals) / np.abs(true_vals))
+        err_pct[np.isinf(err_pct)] = np.nan
+    return err_pct
 
 ###############################################################################
 ###############################################################################
@@ -996,8 +1008,7 @@ def fill_timeseries_gaps_iterative_components(t:                          np.nda
                 if verbose: print(f'iteration {while_iter}. ',current_error,' vs target error: ',convergence_error)
                 while_iter += 1
                 if while_iter > max_iter:
-                    warnings.warn(f'WARNING: We have exceeded the max number of iterations ({max_iter}) without convergence. Returning the original (unmodified) time-series.')
-                    return x,None,None,None,None,None,None, None, None
+                    raise GapFillConvergenceError(f"Exceeded max number of iterations ({max_iter}) without convergence")
 
             x_final += temp_array
 
@@ -1006,9 +1017,7 @@ def fill_timeseries_gaps_iterative_components(t:                          np.nda
             # % corrected series
             x_ca = x_final.copy()
             error_estimates_temp            = np.append(error_estimates,np.abs(x[new_random_points] - x_ca[new_random_points]))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                err_pct_temp = 100*(np.abs(x[new_random_points] - x_ca[new_random_points])/(x[new_random_points]))
-                err_pct_temp[np.isinf(err_pct_temp)] = np.nan
+            err_pct_temp                    = compute_percentage_error(x[new_random_points], x_ca[new_random_points])
             error_estimates_percentage_temp = np.append(error_estimates_percentage, err_pct_temp)
             original_points_temp            = np.append(original_points,x[new_random_points])
             imputed_points_temp             = np.append(imputed_points,x_ca[new_random_points])
@@ -1237,8 +1246,7 @@ def fill_timeseries_gaps(t:                          np.ndarray,
                 if verbose: print(f'iteration {while_iter}. ',current_error,' vs target error: ',convergence_error)
                 while_iter += 1
                 if while_iter > max_iter:
-                    warnings.warn(f'WARNING: We have exceeded the max number of iterations ({max_iter}) without convergence. Returning the original (unmodified) time-series.')
-                    return x,None,None,None,None,None,None, None, None
+                    raise GapFillConvergenceError(f"Exceeded max number of iterations ({max_iter}) without convergence")
 
 
             # 3c-v. Check convergence
@@ -1253,14 +1261,11 @@ def fill_timeseries_gaps(t:                          np.ndarray,
 
 
             if iter_i > max_iter:
-                warnings.warn(f'WARNING: We have exceeded the max number of iterations ({max_iter}) without convergence. Returning the original (unmodified) time-series.')
-                return x,None,None,None,None,None,None, None, None
+                raise GapFillConvergenceError(f"Exceeded max number of iterations ({max_iter}) without convergence")
 
         #4. Update error estimation and points.
         error_estimates            = np.append(error_estimates,np.abs(x[new_random_points] - x_ca[new_random_points]))
-        with np.errstate(divide='ignore', invalid='ignore'):
-            err_pct = 100*(np.abs(x[new_random_points] - x_ca[new_random_points])/(x_old[new_random_points]))
-            err_pct[np.isinf(err_pct)] = np.nan
+        err_pct                    = compute_percentage_error(x[new_random_points], x_ca[new_random_points])
         error_estimates_percentage = np.append(error_estimates_percentage, err_pct)
         original_points            = np.append(original_points,x[new_random_points])
         imputed_points             = np.append(imputed_points,x_ca[new_random_points])
@@ -1288,6 +1293,10 @@ def fill_timeseries_gaps(t:                          np.ndarray,
 
 
 import numpy as np
+
+class GapFillConvergenceError(Exception):
+    """Exception raised when gap filling algorithms fail to converge within max_iter."""
+    pass
 
 def update_imputed_m_gap_values(x_new: np.ndarray, L: int, extension_type: str, multi_thread_run: bool, component_selection_method: str, number_of_groups_to_drop: int, eigenvalue_proportion: float, final_out: np.ndarray, use_cissa_overlap: bool=False, drop_points_from: str='Left', alpha: float=0.05, **kwargs):
     from pycissa.processing.matrix_operations.m_matrix_operations import run_mcissa
@@ -1321,7 +1330,7 @@ def update_imputed_m_gap_values(x_new: np.ndarray, L: int, extension_type: str, 
         for i in keep_indices:
             temp_array += Z_stacked[:, :, i]
     elif component_selection_method == 'monte_carlo_significant_components':
-        warnings.warn("NOTE: The monte_carlo_significant_components method can sometimes be a challenge to converge.")
+        warnings.warn("NOTE: True Monte Carlo significance testing is not yet implemented for multivariate gap filling; falling back to 95% cumulative-variance component selection. This method can sometimes be a challenge to converge.")
         from pycissa.utilities.generate_cissa_result_dictionary import generate_m_results_dictionary
         from pycissa.postprocessing.grouping.grouping_functions import drop_m_monte_carlo_non_significant_components
         from pycissa.postprocessing.monte_carlo.montecarlo import run_monte_carlo_test, prepare_monte_carlo_kwargs
@@ -1424,8 +1433,7 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
                 if verbose: print(f'iteration {while_iter}. ', current_error, ' vs target error: ', convergence_error)
                 while_iter += 1
                 if while_iter > max_iter:
-                    warnings.warn(f'WARNING: We have exceeded the max number of iterations ({max_iter}) without convergence. Returning the original (unmodified) time-series.')
-                    return x, None, None, None, None, None, None, None, None
+                    raise GapFillConvergenceError(f"Exceeded max number of iterations ({max_iter}) without convergence")
 
             if np.max(np.abs(x_ca - x_new)) > convergence_error:
                 iter_i += 1
@@ -1436,14 +1444,11 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
             x_ca = x_new.copy()
 
             if iter_i > max_iter:
-                warnings.warn(f'WARNING: We have exceeded the max number of iterations ({max_iter}) without convergence. Returning the original (unmodified) time-series.')
-                return x, None, None, None, None, None, None, None, None
+                raise GapFillConvergenceError(f"Exceeded max number of iterations ({max_iter}) without convergence")
 
         if test_number > 0:
             error_estimates = np.append(error_estimates, np.abs(x[new_random_points_mask] - x_ca[new_random_points_mask]))
-            with np.errstate(divide='ignore', invalid='ignore'):
-                err_pct = 100 * (np.abs(x[new_random_points_mask] - x_ca[new_random_points_mask]) / (x_old[new_random_points_mask]))
-                err_pct[np.isinf(err_pct)] = np.nan
+            err_pct = compute_percentage_error(x[new_random_points_mask], x_ca[new_random_points_mask])
             error_estimates_percentage = np.append(error_estimates_percentage, err_pct)
             original_points = np.append(original_points, x[new_random_points_mask])
             imputed_points = np.append(imputed_points, x_ca[new_random_points_mask])
