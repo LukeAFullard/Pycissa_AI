@@ -102,12 +102,12 @@ def fill_uneven_timeseries(t: np.ndarray,
                 model.pre_fill_gaps(L=L,
                                     component_selection_method=comp_method,
                                     eigenvalue_proportion=prop,
-                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
+                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback', 'surrogates', 'K_surrogates', 'seed', 'sided_test', 'remove_trend', 'trend_always_significant', 'A_small_shuffle', 'generate_toeplitz_matrix']})
                 # After filling gaps, fit the final model
-                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback', 'surrogates', 'K_surrogates', 'seed', 'sided_test', 'remove_trend', 'trend_always_significant', 'A_small_shuffle', 'generate_toeplitz_matrix']})
             else:
                 # We run a full CiSSA spectral decomposition and reconstruction on the initial guess
-                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback', 'surrogates', 'K_surrogates', 'seed', 'sided_test', 'remove_trend', 'trend_always_significant', 'A_small_shuffle', 'generate_toeplitz_matrix']})
 
             # Use grouping logic to filter the components
             try:
@@ -120,8 +120,45 @@ def fill_uneven_timeseries(t: np.ndarray,
                     else:
                         Z_retained = kept_idx
                 elif comp_method == 'monte_carlo_significant_components':
-                    # Fallback for surrogate testing during iterative L optimization to avoid explosion of compute time.
-                    Z_retained = model.Z
+                    from pycissa.utilities.generate_cissa_result_dictionary import generate_results_dictionary
+                    from pycissa.postprocessing.monte_carlo.montecarlo import run_monte_carlo_test, prepare_monte_carlo_kwargs
+                    from pycissa.postprocessing.grouping.grouping_functions import generate_grouping, classify_monte_carlo_non_significant_components
+
+                    alpha = kwargs.get('alpha', 0.05)
+                    temp_results = generate_results_dictionary(model.Z, model.psd, L)
+                    K_surrogates, surrogates, seed, sided_test, remove_trend, trend_always_significant, A_small_shuffle, generate_toeplitz_matrix = prepare_monte_carlo_kwargs(kwargs)
+                    myfrequencies = generate_grouping(model.psd, L, trend=True)
+
+
+                    import pandas as pd
+                    x_reconstructed = np.sum(model.Z, axis=1)
+                    clean_x = np.where(np.isnan(model.x), x_reconstructed, model.x)
+                    clean_x = pd.Series(clean_x).interpolate(method='linear', limit_direction='both').fillna(0).to_numpy()
+
+                    if np.any(np.isnan(clean_x)):
+                        clean_x[np.isnan(clean_x)] = 0.0
+
+                    temp_result, _ = run_monte_carlo_test(clean_x, L, model.psd, model.Z, temp_results.get('cissa', temp_results), myfrequencies,
+                                             alpha=alpha,
+                                             K_surrogates=K_surrogates,
+                                             surrogates=surrogates,
+                                             seed=seed,
+                                             sided_test=sided_test,
+                                             remove_trend=remove_trend,
+                                             trend_always_significant=trend_always_significant,
+                                             A_small_shuffle=A_small_shuffle,
+                                             generate_toeplitz_matrix=generate_toeplitz_matrix)
+
+                    # The classify function expects these to be set in temp_result
+                    temp_result['model parameters'] = {
+                        'monte_carlo_surrogate_type': surrogates,
+                        'monte_carlo_alpha': alpha,
+                        'monte_carlo_sided_test': sided_test
+                    }
+
+                    trend, periodic, noise = classify_monte_carlo_non_significant_components(model.Z, temp_result)
+                    kept_idx = trend + periodic
+                    Z_retained = model.Z[:, kept_idx]
                 else:
                     Z_retained = model.Z
             except Exception as e:
@@ -151,7 +188,10 @@ def fill_uneven_timeseries(t: np.ndarray,
             rmse = np.sqrt(np.mean((y_true - y_pred)**2))
             ss_res = np.sum((y_true - y_pred)**2)
             ss_tot = np.sum((y_true - np.mean(y_true))**2)
-            r2 = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+            if ss_tot != 0:
+                r2 = 1 - (ss_res / ss_tot)
+            else:
+                r2 = 1.0 if ss_res == 0 else 0.0
 
             # Calculate Concordance Correlation Coefficient (CCC)
             mean_true = np.mean(y_true)
@@ -209,7 +249,10 @@ def fill_uneven_timeseries(t: np.ndarray,
                     else:
                         fallback_res['status'] = 'success' # fallback fixed the poor fit
                     return fallback_res
-        except Exception:
+        except ValueError:
+            pass
+        except Exception as e:
+            warnings.warn(f"Fallback to linear interpolation failed with unexpected error: {str(e)}")
             pass
 
         # Second fallback for extreme sparsity: don't drop any components
@@ -227,7 +270,10 @@ def fill_uneven_timeseries(t: np.ndarray,
                     else:
                         fallback_res_keep['status'] = 'success' # fallback fixed the poor fit
                     return fallback_res_keep
-            except Exception:
+            except ValueError:
+                pass
+            except Exception as e:
+                warnings.warn(f"Fallback to no component dropping failed with unexpected error: {str(e)}")
                 pass
 
         # If we reach here, even the fallbacks are poor (or failed). We just return the best we have, but warn.
@@ -383,12 +429,12 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                                     component_selection_method=comp_method,
                                     eigenvalue_proportion=prop,
                                     multivariate=True,
-                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
+                                    **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback', 'surrogates', 'K_surrogates', 'seed', 'sided_test', 'remove_trend', 'trend_always_significant', 'A_small_shuffle', 'generate_toeplitz_matrix']})
                 # After filling gaps, fit the final model
-                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback', 'surrogates', 'K_surrogates', 'seed', 'sided_test', 'remove_trend', 'trend_always_significant', 'A_small_shuffle', 'generate_toeplitz_matrix']})
             else:
                 # We run a full M-CiSSA spectral decomposition and reconstruction on the initial guess
-                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback']})
+                model.fit(L=L, **{k: v for k, v in kwargs.items() if k not in ['outliers', 'gap_threshold', 'dt', 'center_data', 'multivariate', 'estimate_error', 'verbose', 'component_selection_method', 'eigenvalue_proportion', 'alpha', '_is_fallback', 'surrogates', 'K_surrogates', 'seed', 'sided_test', 'remove_trend', 'trend_always_significant', 'A_small_shuffle', 'generate_toeplitz_matrix']})
 
             try:
                 # Manually replicate component dropping since m_select_components doesn't exist
@@ -396,6 +442,52 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                     from pycissa.postprocessing.grouping.m_grouping_functions import m_classify_smallest_proportion_psd
                     trend, periodic, noise = m_classify_smallest_proportion_psd(model.Z_stacked, model.psd, L, prop)
                     # For multivariate, it returns lists of component indices!
+                    kept_idx = trend + periodic
+                    Z_retained = model.Z_stacked[:, :, kept_idx]
+                elif comp_method == 'monte_carlo_significant_components':
+                    from pycissa.utilities.generate_cissa_result_dictionary import generate_m_results_dictionary
+                    from pycissa.postprocessing.monte_carlo.m_montecarlo import run_m_monte_carlo_test
+                    from pycissa.postprocessing.monte_carlo.montecarlo import prepare_monte_carlo_kwargs
+                    from pycissa.postprocessing.grouping.m_grouping_functions import m_classify_monte_carlo_non_significant_components
+
+                    alpha = kwargs.get('alpha', 0.05)
+                    temp_results = generate_m_results_dictionary(model.Z_stacked, model.psd, L)
+                    K_surrogates, surrogates, seed, sided_test, remove_trend, trend_always_significant, A_small_shuffle, generate_toeplitz_matrix = prepare_monte_carlo_kwargs(kwargs)
+
+                    # Ensure parameters exist before test
+                    temp_results['model parameters'] = {
+                        'monte_carlo_surrogate_type': surrogates,
+                        'monte_carlo_alpha': alpha,
+                        'monte_carlo_sided_test': sided_test
+                    }
+
+                    # We run multivariate Monte Carlo test
+                    import pandas as pd
+                    x_reconstructed = np.sum(model.Z_stacked, axis=2)
+                    clean_x_m = np.where(np.isnan(model.x), x_reconstructed, model.x)
+                    clean_x_m = pd.DataFrame(clean_x_m).interpolate(method='linear', limit_direction='both').fillna(0).to_numpy()
+                    temp_result = run_m_monte_carlo_test(
+                        x=clean_x_m,
+                        L=L,
+                        psd=model.psd,
+                        results=temp_results.get('mcissa', temp_results),
+                        alpha=alpha,
+                        K_surrogates=K_surrogates,
+                        surrogates=surrogates,
+                        seed=seed,
+                        sided_test=sided_test,
+                        remove_trend=remove_trend,
+                        trend_always_significant=trend_always_significant,
+                        A_small_shuffle=A_small_shuffle
+                    )
+
+                    # Update temp_results with the monte carlo output
+                    if isinstance(temp_result, dict):
+                        temp_results.update(temp_result)
+                    elif isinstance(temp_result, tuple):
+                        temp_results.update(temp_result[0])
+
+                    trend, periodic, noise = m_classify_monte_carlo_non_significant_components(temp_results)
                     kept_idx = trend + periodic
                     Z_retained = model.Z_stacked[:, :, kept_idx]
                 else:
@@ -428,7 +520,10 @@ def m_fill_uneven_timeseries(t: np.ndarray,
             rmse = np.sqrt(np.mean((y_true - y_pred)**2))
             ss_res = np.sum((y_true - y_pred)**2)
             ss_tot = np.sum((y_true - np.mean(y_true))**2)
-            r2 = 1 - (ss_res / ss_tot) if ss_tot != 0 else 0.0
+            if ss_tot != 0:
+                r2 = 1 - (ss_res / ss_tot)
+            else:
+                r2 = 1.0 if ss_res == 0 else 0.0
 
             # Calculate Concordance Correlation Coefficient (CCC)
             mean_true = np.mean(y_true)
@@ -485,7 +580,10 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                     else:
                         fallback_res['status'] = 'success'
                     return fallback_res
-        except Exception:
+        except ValueError:
+            pass
+        except Exception as e:
+            warnings.warn(f"Fallback to linear interpolation failed with unexpected error: {str(e)}")
             pass
 
         # Second fallback for extreme sparsity: don't drop any components
@@ -503,7 +601,10 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                     else:
                         fallback_res_keep['status'] = 'success'
                     return fallback_res_keep
-            except Exception:
+            except ValueError:
+                pass
+            except Exception as e:
+                warnings.warn(f"Fallback to no component dropping failed with unexpected error: {str(e)}")
                 pass
 
         # If we reach here, even the fallbacks are poor. We just return the best we have, but warn.

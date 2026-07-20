@@ -102,3 +102,55 @@ def test_fill_uneven_timeseries_ccc():
     assert 'ccc' in res
     assert res['ccc'] > 0.0
     assert res['best_L'] in [5, 10]
+
+def test_fill_uneven_timeseries_monte_carlo():
+    np.random.seed(42)
+    t = np.sort(np.random.uniform(0, 50, 40))
+    x = np.sin(t) + np.random.normal(0, 0.05, 40)
+
+    gap_mask = (t > 20) & (t < 30)
+    t = t[~gap_mask]
+    x = x[~gap_mask]
+
+    res = fill_uneven_timeseries(
+        t=t,
+        x=x,
+        L_values=[5],
+        dt=1.0,
+        gap_threshold=1.5,
+        component_selection_method='monte_carlo_significant_components',
+        alpha=0.05,
+        surrogates='random_permutation',
+        K_surrogates=10, # low number for speed
+        plot=False
+    )
+
+    assert res['best_L'] == 5
+    assert res['r2'] > 0.0
+
+from pycissa.preprocessing.gap_fill.uneven_gap_filling import m_fill_uneven_timeseries
+
+def test_m_fill_uneven_timeseries_monte_carlo():
+    np.random.seed(42)
+    t = np.sort(np.random.uniform(0, 50, 40))
+    x = np.column_stack([np.sin(t) + np.random.normal(0, 0.05, 40), np.cos(t) + np.random.normal(0, 0.05, 40)])
+
+    gap_mask = (t > 20) & (t < 30)
+    t = t[~gap_mask]
+    x = x[~gap_mask]
+
+    res = m_fill_uneven_timeseries(
+        t=t,
+        x=x,
+        L_values=[5],
+        dt=1.0,
+        gap_threshold=1.5,
+        component_selection_method='monte_carlo_significant_components',
+        alpha=0.05,
+        surrogates='random_permutation',
+        K_surrogates=10, # low number for speed
+        plot=False
+    )
+
+    assert res['best_L'] == 5
+    assert res['r2'] > 0.0
