@@ -1330,26 +1330,22 @@ def update_imputed_m_gap_values(x_new: np.ndarray, L: int, extension_type: str, 
         for i in keep_indices:
             temp_array += Z_stacked[:, :, i]
     elif component_selection_method == 'monte_carlo_significant_components':
-        warnings.warn("NOTE: True Monte Carlo significance testing is not yet implemented for multivariate gap filling; falling back to 95% cumulative-variance component selection. This method can sometimes be a challenge to converge.")
-        from pycissa.utilities.generate_cissa_result_dictionary import generate_m_results_dictionary
-        from pycissa.postprocessing.grouping.grouping_functions import drop_m_monte_carlo_non_significant_components
-        from pycissa.postprocessing.monte_carlo.montecarlo import run_monte_carlo_test, prepare_monte_carlo_kwargs
-        from pycissa.postprocessing.grouping.grouping_functions import generate_grouping
+        warnings.warn("NOTE: The monte_carlo_significant_components method can sometimes be a challenge to converge due to the natural and expected changing number of significant components due to the surrogate testing. If challenges are found, try reducting alpha so that surrogate components rarely switch from non-significant to significant, or alternatively, loosen the convergence tolerance.")
+        from pycissa.postprocessing.grouping.m_grouping_functions import m_drop_monte_carlo_non_significant_components
 
-        # Calculate a 1D PSD array (sum of eigenvalues across channels) for univariate MC wrapper
-        # The true multivariate MC is complex, but we can approximate significance via the first channel or aggregate PSD for gap filling.
-        # Let's use the simplest approach right now since gap filling needs to be robust:
-        # Instead of full MC, we'll fallback to proportion if MC isn't fully supported natively for M-CiSSA output here yet.
-        variances = np.sum([np.var(Z_stacked[:, m, :], axis=0) for m in range(M)], axis=0)
-        sorted_indices = np.argsort(variances)[::-1]
-        cumulative_prop = np.cumsum(variances[sorted_indices]) / np.sum(variances)
-        keep_indices = []
-        for idx, prop in zip(sorted_indices, cumulative_prop):
-            keep_indices.append(idx)
-            if prop >= 0.95: # 95% variance kept
-                break
-        for i in keep_indices:
-            temp_array += Z_stacked[:, :, i]
+        # Merge extension_type into kwargs to pass down correctly
+        if 'extension_type' not in kwargs:
+            kwargs['extension_type'] = extension_type
+        if 'alpha' not in kwargs:
+            kwargs['alpha'] = alpha
+
+        temp_array = m_drop_monte_carlo_non_significant_components(
+            Z_stacked=Z_stacked,
+            psd=psd,
+            L=L,
+            x_new=x_new,
+            **kwargs
+        )
     else:
         # Simplest fallback
         temp_array = np.sum(Z_stacked, axis=2)

@@ -130,3 +130,25 @@ def test_find_outliers():
     k, l_t, g_t = initialise_outlier_type(['<>', [5, 15]])
     out, mu, mumax, conv = find_outliers(x, ['<>', [5, 15]], k, l_t, g_t, ['value', 1], 1)
     np.testing.assert_array_equal(out, [True, False, False, False, True])
+
+
+def test_m_fill_timeseries_gaps_monte_carlo():
+    np.random.seed(42)
+    t = np.arange(0, 50)
+    x = np.sin(2 * np.pi * t / 10)
+    x_multi = np.column_stack([x, x + 0.1])
+
+    # Introduce small gaps
+    x_multi[20:25, 0] = np.nan
+    x_multi[20:25, 1] = np.nan
+
+    # Use monte carlo significant components
+    try:
+        x_filled, *_ = m_fill_timeseries_gaps(t, x_multi, L=10,
+            component_selection_method='monte_carlo_significant_components',
+            K_surrogates=19, alpha=0.05, test_repeats=0, max_iter=2)
+        assert not np.any(np.isnan(x_filled))
+    except GapFillConvergenceError:
+        # Depending on noise/seed it might not converge in 2 iterations, which is fine,
+        # we just want to ensure the MC logic executes without crashing from shape errors.
+        pass
