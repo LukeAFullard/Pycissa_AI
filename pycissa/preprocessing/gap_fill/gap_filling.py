@@ -412,7 +412,8 @@ def remove_good_points_at_random(out:         np.ndarray,
     if iter_i == 1 or previous_random_points is None:
         new_random_points = np.zeros_like(out, dtype=bool)
         indices = np.where(~out)[0]
-        selected = np.random.choice(indices, size=int(test_number), replace=False)
+        actual_test_number = min(int(test_number), len(indices))
+        selected = np.random.choice(indices, size=actual_test_number, replace=False)
         new_random_points[selected] = True
     else:
         new_random_points = previous_random_points
@@ -468,22 +469,20 @@ def initial_guess_for_gap_values(x_new:         np.ndarray,
         x_new[final_out] = initial_guess[1]
     elif initial_guess[0] == 'previous':
         #previous good value used for outlier initial guess
+        idx = np.where(~final_out.flatten(), np.arange(len(final_out.flatten())), -1)
+        last_good_idx = np.maximum.accumulate(idx)
+
         bad_indices = np.where(final_out.flatten())[0]
-        good_indices = ~final_out.flatten()
 
         previous_val = []
         x_new_flat = x_new.flatten()  # Flatten once before the loop to avoid copying overhead
         for outlier_index in bad_indices:
-            # find last true index in good_indices before outlier_index
-            good_before_outlier = np.where(good_indices[:outlier_index])[0]
-            if len(good_before_outlier) > 0:
-                previous_good_index = good_before_outlier[-1]
-                previous_val.append(x_new_flat[previous_good_index].item())
+            l_idx = last_good_idx[outlier_index]
+            if l_idx != -1:
+                previous_val.append(x_new_flat[l_idx].item() * initial_guess[1])
             else:
-                # Fallback if no good value exists before the outlier (e.g. outlier at start)
                 previous_val.append(0.0)
 
-        previous_val = [val * initial_guess[1] for val in previous_val]
         # Reshape previous_val to match final_out's dimension if final_out is 2D
         x_new[final_out] = previous_val
 
@@ -1213,14 +1212,19 @@ def fill_timeseries_gaps(t:                          np.ndarray,
             test_number = 0
         iter_i = 1
         new_random_points = None
+        imputation_started = False
 
         # 3c. run through while loop.
         while iter_i>0:
             # 3c-i. Find outliers/missing data and convergence criterion
             out, mu, mumax, convergence_error = find_outliers(x_new,outliers,k,l_t,g_t,convergence,data_per_unit_period)
             if sum(out) == 0:
-                warnings.warn("WARNING: No gaps found in the data. Returning the original (unmodified) time-series.")
-                return x,None,None,None,None,None,None,None,None
+                if not imputation_started:
+                    warnings.warn("WARNING: No gaps found in the data. Returning the original (unmodified) time-series.")
+                    return x,None,None,None,None,None,None,None,None
+                else:
+                    break
+            imputation_started = True
             # 3c-ii. Randomly select non-outlier points to evaluate error in gap filling
             new_random_points, final_out  = remove_good_points_at_random(out,iter_i,test_number,new_random_points)
 
@@ -1250,7 +1254,7 @@ def fill_timeseries_gaps(t:                          np.ndarray,
 
 
             # 3c-v. Check convergence
-            if np.max(np.abs(x_ca-x_new))>convergence_error:
+            if np.nanmax(np.abs(x_ca-x_new))>convergence_error:
                 iter_i += 1
             else:
                 x_ca = x_new.copy()
@@ -1271,8 +1275,14 @@ def fill_timeseries_gaps(t:                          np.ndarray,
         imputed_points             = np.append(imputed_points,x_ca[new_random_points])
 
     #5. Calculate RMSE and residuals
-    error_rmse             = np.sqrt( (np.nansum(error_estimates*error_estimates))/len(error_estimates)    )
-    error_rmse_percentage  = np.sqrt( (np.nansum(error_estimates_percentage*error_estimates_percentage))/len(error_estimates_percentage)    )
+    if len(error_estimates) > 0:
+        error_rmse             = np.sqrt( np.nanmean(error_estimates*error_estimates) )
+        error_rmse_percentage  = np.sqrt( np.nanmean(error_estimates_percentage*error_estimates_percentage) )
+    else:
+        error_rmse = np.nan
+        error_rmse_percentage = np.nan
+        if estimate_error:
+            warnings.warn("WARNING: No test points were held out; error metrics unavailable.")
     residuals = original_points - imputed_points
 
     #TO DO. INVESTIGATE CONFORMAL PREDICTION METHODS FOR ADDING PREDICTION INTERVALS
@@ -1382,6 +1392,7 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
 
         iter_i = 1
         new_random_points_mask_full = None
+        imputation_started = False
 
         while iter_i > 0:
             out_mask = np.zeros(x_new.shape, dtype=bool)
@@ -1397,8 +1408,12 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
                 conv_err_m[m] = conv_1d
 
             if np.sum(out_mask) == 0:
-                warnings.warn("WARNING: No gaps found in the data. Returning the original (unmodified) time-series.")
-                return x, None, None, None, None, None, None, None, None
+                if not imputation_started:
+                    warnings.warn("WARNING: No gaps found in the data. Returning the original (unmodified) time-series.")
+                    return x, None, None, None, None, None, None, None, None
+                else:
+                    break
+            imputation_started = True
 
             convergence_error = np.abs(np.nanmax(conv_err_m))
 
@@ -1431,7 +1446,7 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
                 if while_iter > max_iter:
                     raise GapFillConvergenceError(f"Exceeded max number of iterations ({max_iter}) without convergence")
 
-            if np.max(np.abs(x_ca - x_new)) > convergence_error:
+            if np.nanmax(np.abs(x_ca - x_new)) > convergence_error:
                 iter_i += 1
             else:
                 x_ca = x_new.copy()
@@ -1451,8 +1466,13 @@ def m_fill_timeseries_gaps(t, x, L, convergence=['value', 1], extension_type='AR
 
     # 5. Calculate RMSE and residuals
     if len(error_estimates) > 0:
-        error_rmse = np.sqrt((np.nansum(error_estimates * error_estimates)) / len(error_estimates))
-        error_rmse_percentage = np.sqrt((np.nansum(error_estimates_percentage * error_estimates_percentage)) / len(error_estimates_percentage))
+        error_rmse = np.sqrt(np.nanmean(error_estimates * error_estimates))
+        error_rmse_percentage = np.sqrt(np.nanmean(error_estimates_percentage * error_estimates_percentage))
+    else:
+        error_rmse = np.nan
+        error_rmse_percentage = np.nan
+        if estimate_error:
+            warnings.warn("WARNING: No test points were held out; error metrics unavailable.")
     residuals = original_points - imputed_points
 
     # 6 create figures
