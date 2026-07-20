@@ -45,6 +45,8 @@ def fill_uneven_timeseries(t: np.ndarray,
     -------
     dict
         Dictionary containing the best L, original and filled data, and statistics.
+        Also includes a 'status' key indicating outcome ('success', 'poor_fit', 'poor_fit_fallback_linear', 'poor_fit_fallback_none').
+        Note: The algorithm may struggle and produce a 'poor_fit' on data with extreme sparsity.
     """
     from pycissa.processing.cissa.cissa import Cissa
 
@@ -189,6 +191,10 @@ def fill_uneven_timeseries(t: np.ndarray,
 
     is_fallback = kwargs.pop('_is_fallback', False)
 
+    status = 'success'
+    if best_r2 < r2_warning_threshold:
+        status = 'poor_fit'
+
     # 4. Edge Case Fallback & Warnings
     if best_r2 < r2_warning_threshold and not is_fallback:
         try:
@@ -199,6 +205,9 @@ def fill_uneven_timeseries(t: np.ndarray,
                 if fallback_res['r2'] > best_r2:
                     if fallback_res['r2'] < r2_warning_threshold:
                         warnings.warn(f"Poor fit detected for best L={fallback_res['best_L']}. R-squared = {fallback_res['r2']:.4f} < {r2_warning_threshold}")
+                        fallback_res['status'] = 'poor_fit_fallback_linear'
+                    else:
+                        fallback_res['status'] = 'success' # fallback fixed the poor fit
                     return fallback_res
         except Exception:
             pass
@@ -214,6 +223,9 @@ def fill_uneven_timeseries(t: np.ndarray,
                 if fallback_res_keep['r2'] > best_r2:
                     if fallback_res_keep['r2'] < r2_warning_threshold:
                         warnings.warn(f"Poor fit detected for best L={fallback_res_keep['best_L']}. R-squared = {fallback_res_keep['r2']:.4f} < {r2_warning_threshold}")
+                        fallback_res_keep['status'] = 'poor_fit_fallback_none'
+                    else:
+                        fallback_res_keep['status'] = 'success' # fallback fixed the poor fit
                     return fallback_res_keep
             except Exception:
                 pass
@@ -244,6 +256,7 @@ def fill_uneven_timeseries(t: np.ndarray,
 
 
     ret_dict = {
+        'status': status,
         'best_L': best_L,
         'rmse': best_rmse,
         'r2': best_r2,
@@ -303,6 +316,8 @@ def m_fill_uneven_timeseries(t: np.ndarray,
     -------
     dict
         Dictionary containing the best L, original and filled data, and statistics.
+        Also includes a 'status' key indicating outcome ('success', 'poor_fit', 'poor_fit_fallback_linear', 'poor_fit_fallback_none').
+        Note: The algorithm may struggle and produce a 'poor_fit' on data with extreme sparsity.
     """
     from pycissa.processing.mcissa.mcissa import MCissa
 
@@ -452,6 +467,10 @@ def m_fill_uneven_timeseries(t: np.ndarray,
 
     is_fallback = kwargs.pop('_is_fallback', False)
 
+    status = 'success'
+    if best_r2 < r2_warning_threshold:
+        status = 'poor_fit'
+
     # 4. Edge Case Fallback & Warnings
     if best_r2 < r2_warning_threshold and not is_fallback:
         try:
@@ -462,6 +481,9 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                 if fallback_res['r2'] > best_r2:
                     if fallback_res['r2'] < r2_warning_threshold:
                         warnings.warn(f"Poor fit detected for best L={fallback_res['best_L']}. R-squared = {fallback_res['r2']:.4f} < {r2_warning_threshold}")
+                        fallback_res['status'] = 'poor_fit_fallback_linear'
+                    else:
+                        fallback_res['status'] = 'success'
                     return fallback_res
         except Exception:
             pass
@@ -477,6 +499,9 @@ def m_fill_uneven_timeseries(t: np.ndarray,
                 if fallback_res_keep['r2'] > best_r2:
                     if fallback_res_keep['r2'] < r2_warning_threshold:
                         warnings.warn(f"Poor fit detected for best L={fallback_res_keep['best_L']}. R-squared = {fallback_res_keep['r2']:.4f} < {r2_warning_threshold}")
+                        fallback_res_keep['status'] = 'poor_fit_fallback_none'
+                    else:
+                        fallback_res_keep['status'] = 'success'
                     return fallback_res_keep
             except Exception:
                 pass
@@ -507,6 +532,7 @@ def m_fill_uneven_timeseries(t: np.ndarray,
 
 
     ret_dict = {
+        'status': status,
         'best_L': best_L,
         'rmse': best_rmse,
         'r2': best_r2,
