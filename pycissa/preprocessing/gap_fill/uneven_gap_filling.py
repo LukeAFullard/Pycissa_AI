@@ -67,9 +67,10 @@ def fill_uneven_timeseries(t: np.ndarray,
     x_even_guess = x_even_interp.copy()
 
     # Apply gap_threshold masking
-    idx = np.searchsorted(t, t_even)
-    idx = np.clip(idx, 1, len(t) - 1)
-    min_distances = np.minimum(np.abs(t_even - t[idx - 1]), np.abs(t_even - t[idx]))
+    t_valid = t[valid]
+    idx = np.searchsorted(t_valid, t_even)
+    idx = np.clip(idx, 1, len(t_valid) - 1)
+    min_distances = np.minimum(np.abs(t_even - t_valid[idx - 1]), np.abs(t_even - t_valid[idx]))
 
     gaps_mask = min_distances > gap_threshold
     if np.any(gaps_mask):
@@ -391,9 +392,14 @@ def m_fill_uneven_timeseries(t: np.ndarray,
     x_even_guess = x_even_interp.copy()
 
     # Apply gap_threshold masking
-    idx = np.searchsorted(t, t_even)
-    idx = np.clip(idx, 1, len(t) - 1)
-    min_distances = np.minimum(np.abs(t_even - t[idx - 1]), np.abs(t_even - t[idx]))
+    valid_any = np.any(~np.isnan(x), axis=1)
+    if not np.any(valid_any):
+        raise ValueError("No valid data points across any channel.")
+    t_valid = t[valid_any]
+
+    idx = np.searchsorted(t_valid, t_even)
+    idx = np.clip(idx, 1, len(t_valid) - 1)
+    min_distances = np.minimum(np.abs(t_even - t_valid[idx - 1]), np.abs(t_even - t_valid[idx]))
 
     gaps_mask = min_distances > gap_threshold
     if np.any(gaps_mask):
