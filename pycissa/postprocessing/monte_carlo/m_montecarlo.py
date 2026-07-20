@@ -2,8 +2,17 @@ import numpy as np
 import copy
 import matplotlib.pyplot as plt
 
-def m_get_surrogate_data(data: np.ndarray, surrogates: str, seed: int = None) -> np.ndarray:
+def m_get_surrogate_data(data: np.ndarray,
+                         surrogates: str,
+                         seed: int = None,
+                         alpha_slope: float|None = None,
+                         f_breakpoint: float|None = None,
+                         alpha_1_slope: float|None = None,
+                         alpha_2_slope: float|None = None,
+                         A_small_shuffle: float = 1.0) -> np.ndarray:
     x_copy = copy.deepcopy(data)
+    T, M = x_copy.shape
+
     if surrogates == 'random_permutation':
         rng = np.random.default_rng(seed)
         # Apply the same permutation to all variables to maintain spatial cross-correlation
@@ -11,19 +20,41 @@ def m_get_surrogate_data(data: np.ndarray, surrogates: str, seed: int = None) ->
         rng.shuffle(indices)
         x_copy = x_copy[indices, :]
     elif surrogates == 'small_shuffle':
-        # Apply same small shuffle to all variables
+        from pycissa.postprocessing.monte_carlo.surrogates import generate_small_shuffle
+        # Typically small_shuffle in univariate is generated via generate_small_shuffle
+        # But to maintain exact cross-correlation, we can do it jointly if we apply the same noise array
         rng = np.random.default_rng(seed)
         gaussian_random_numbers = rng.standard_normal(len(x_copy))
         original_index = np.arange(len(x_copy))
-        perturbed_index = original_index + 1.0 * gaussian_random_numbers
+        perturbed_index = original_index + A_small_shuffle * gaussian_random_numbers
         new_index = np.argsort(perturbed_index)
         x_copy = x_copy[new_index, :]
+    elif surrogates == 'ar1_fit':
+        from pycissa.postprocessing.monte_carlo.surrogates import generate_ar1_evenly
+        for m in range(M):
+            # Pass a deterministic derivative of the seed so it is reproducible but uncorrelated across channels
+            chan_seed = seed + m if seed is not None else None
+            x_copy[:, m] = generate_ar1_evenly(x_copy[:, m], seed=chan_seed)
+    elif surrogates in ['coloured_noise_single', 'coloured_noise_segmented']:
+        from pycissa.postprocessing.monte_carlo.fractal_surrogates import generate_colour_surrogate
+        for m in range(M):
+            chan_seed = seed + m if seed is not None else None
+            x_copy[:, m] = generate_colour_surrogate(
+                data=x_copy[:, m],
+                alpha_slope=alpha_slope,
+                f_breakpoint=f_breakpoint,
+                alpha_1_slope=alpha_1_slope,
+                alpha_2_slope=alpha_2_slope,
+                surrogates=surrogates,
+                seed=chan_seed
+            )
     else:
-        # ar1_fit or others could be implemented per column, but let's stick to these for now.
+        # Fallback to random permutation if unknown
         rng = np.random.default_rng(seed)
         indices = np.arange(x_copy.shape[0])
         rng.shuffle(indices)
         x_copy = x_copy[indices, :]
+
     return x_copy
 
 def m_calculate_surrogate_psd(x_surrogate: np.ndarray, L: int, extension_type: str, extend_left: bool, extend_right: bool, nft: int) -> np.ndarray:
@@ -55,7 +86,12 @@ def run_m_monte_carlo_test(x: np.ndarray,
                            extension_type: str = 'AR_LR',
                            extend_left: bool = True,
                            extend_right: bool = True,
-                           plot_figure: bool = False
+                           plot_figure: bool = False,
+                           alpha_slope: float|None = None,
+                           f_breakpoint: float|None = None,
+                           alpha_1_slope: float|None = None,
+                           alpha_2_slope: float|None = None,
+                           A_small_shuffle: float = 1.0
                            ) -> tuple[dict, plt.figure]:
     from pycissa.postprocessing.monte_carlo.montecarlo import check_for_significance
     from pycissa.processing.matrix_operations.matrix_operations import calculate_number_of_frequencies
@@ -99,7 +135,16 @@ def run_m_monte_carlo_test(x: np.ndarray,
 
     for surrogate_i in range(0, number_of_surrogates):
         current_seed = seed + surrogate_i if seed is not None else None
-        x_surrogate = m_get_surrogate_data(x_copy, surrogates, current_seed)
+        x_surrogate = m_get_surrogate_data(
+            data=x_copy,
+            surrogates=surrogates,
+            seed=current_seed,
+            alpha_slope=alpha_slope,
+            f_breakpoint=f_breakpoint,
+            alpha_1_slope=alpha_1_slope,
+            alpha_2_slope=alpha_2_slope,
+            A_small_shuffle=A_small_shuffle
+        )
 
         if remove_trend:
             trend_comp = components.get('trend')
