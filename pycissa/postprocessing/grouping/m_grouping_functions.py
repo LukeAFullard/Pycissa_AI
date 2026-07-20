@@ -154,6 +154,11 @@ def m_drop_monte_carlo_non_significant_components(Z_stacked, psd, L, x_new, **kw
 
     extension_type = kwargs.get('extension_type', 'AR_LR')
 
+    alpha_slope = kwargs.get('alpha_slope', None)
+    f_breakpoint = kwargs.get('f_breakpoint', None)
+    alpha_1_slope = kwargs.get('alpha_1_slope', None)
+    alpha_2_slope = kwargs.get('alpha_2_slope', None)
+
     temp_result, _ = run_m_monte_carlo_test(
         x=x_new,
         L=L,
@@ -169,7 +174,12 @@ def m_drop_monte_carlo_non_significant_components(Z_stacked, psd, L, x_new, **kw
         extension_type=extension_type,
         extend_left=True,
         extend_right=True,
-        plot_figure=False
+        plot_figure=False,
+        alpha_slope=alpha_slope,
+        f_breakpoint=f_breakpoint,
+        alpha_1_slope=alpha_1_slope,
+        alpha_2_slope=alpha_2_slope,
+        A_small_shuffle=A_small_shuffle
     )
 
     temp_result['model parameters'] = temp_results['model parameters']

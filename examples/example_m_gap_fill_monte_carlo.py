@@ -30,22 +30,39 @@ def main():
     model = MCissa(t, x)
 
     # 2. Perform Gap Filling using true multivariate Monte Carlo
-    print("Running multivariate gap filling with Monte Carlo significance testing...")
+    print("Running multivariate gap filling with random_permutation surrogate testing...")
     # Using small K_surrogates to keep the example fast, but allowing sufficient max_iter to converge
     # We lower test_repeats to 0 to prevent the outer evaluation loop from slowing down the example script too much.
     model.pre_fill_gaps(
         L=20,
         component_selection_method='monte_carlo_significant_components',
+        surrogates='random_permutation',
         K_surrogates=19, # 19 surrogates for a 0.05 significance level
         alpha=0.05,
         max_iter=50,
         test_repeats=0,
         verbose=True
     )
+    x_filled_random = model.x
 
-    x_filled = model.x
 
-    # 3. Plot the results
+    # 3. Perform Gap Filling using a different Surrogate (e.g., AR(1) red noise fit)
+    print("Running multivariate gap filling with ar1_fit surrogate testing...")
+    model2 = MCissa(t, x)
+    model2.pre_fill_gaps(
+        L=20,
+        component_selection_method='monte_carlo_significant_components',
+        surrogates='ar1_fit',
+        K_surrogates=5, # Lower K_surrogates for AR1 in the example script to avoid slow execution times
+        alpha=0.05,
+        max_iter=50,
+        test_repeats=0,
+        verbose=True
+    )
+    x_filled_ar1 = model2.x
+
+
+    # 4. Plot the results
     fig, axes = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
     for m in range(2):
@@ -56,20 +73,21 @@ def main():
         orig_x = x1 if m == 0 else x2
 
         # Plot full noisy signal as thin gray line
-        ax.plot(t, orig_x, color='lightgray', label='Original Noisy Signal (Hidden by gaps)')
+        ax.plot(t, orig_x, color='lightgray', label='Original Noisy Signal')
 
         # Plot the data with gaps that was passed to the model
-        ax.plot(t, x[:, m], 'o', color='black', markersize=4, label='Input Data (With Gaps)')
+        ax.plot(t, x[:, m], 'o', color='black', markersize=5, label='Input Data (With Gaps)')
 
-        # Plot the gap-filled result
-        ax.plot(t, x_filled[:, m], 'r--', linewidth=2, label='Gap-Filled Data')
+        # Plot the gap-filled results
+        ax.plot(t, x_filled_random[:, m], 'r--', linewidth=2, label='Filled (Random Permutation)')
+        ax.plot(t, x_filled_ar1[:, m], 'b:', linewidth=2, label='Filled (AR1 Fit)')
 
         ax.set_title(f'Channel {m+1}')
         ax.legend(loc='upper right')
         ax.grid(True, alpha=0.3)
 
     plt.xlabel('Time')
-    plt.suptitle('Multivariate Gap Filling using Monte Carlo Significance Testing')
+    plt.suptitle('Multivariate Gap Filling using Different Monte Carlo Surrogates')
     plt.tight_layout()
 
     output_file = 'examples/m_gap_fill_monte_carlo_plot.png'
