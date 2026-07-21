@@ -177,7 +177,6 @@ def fill_uneven_timeseries(t: np.ndarray,
 
             x_back_interp = np.sum(Z_back_interp, axis=1)
             x_even_filled = np.sum(Z_retained, axis=1)
-            best_Z_back_interp = Z_back_interp
 
             # Calculate metrics against raw measurements!
             valid_mask = ~np.isnan(x) & ~np.isnan(x_back_interp)
@@ -391,21 +390,28 @@ def m_fill_uneven_timeseries(t: np.ndarray,
 
     x_even_guess = x_even_interp.copy()
 
-    # Apply gap_threshold masking
+    # Apply gap_threshold masking per channel
     valid_any = np.any(~np.isnan(x), axis=1)
     if not np.any(valid_any):
         raise ValueError("No valid data points across any channel.")
-    t_valid = t[valid_any]
 
-    idx = np.searchsorted(t_valid, t_even)
-    idx = np.clip(idx, 1, len(t_valid) - 1)
-    min_distances = np.minimum(np.abs(t_even - t_valid[idx - 1]), np.abs(t_even - t_valid[idx]))
+    has_gaps_any_channel = False
+    for m in range(M):
+        valid = ~np.isnan(x[:, m])
+        if not np.any(valid):
+            continue
 
-    gaps_mask = min_distances > gap_threshold
-    if np.any(gaps_mask):
-        # Broadcast mask to (T, M)
-        x_even_guess[np.tile(gaps_mask[:, np.newaxis], (1, M))] = np.nan
-    else:
+        t_valid = t[valid]
+        idx = np.searchsorted(t_valid, t_even)
+        idx = np.clip(idx, 1, len(t_valid) - 1)
+        min_distances = np.minimum(np.abs(t_even - t_valid[idx - 1]), np.abs(t_even - t_valid[idx]))
+
+        gaps_mask = min_distances > gap_threshold
+        if np.any(gaps_mask):
+            x_even_guess[gaps_mask, m] = np.nan
+            has_gaps_any_channel = True
+
+    if not has_gaps_any_channel:
         warnings.warn("No gaps found based on the given gap_threshold. The entire even grid is considered known data.")
 
     best_L = None
