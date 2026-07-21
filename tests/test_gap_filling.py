@@ -172,3 +172,28 @@ def test_find_outliers_with_nans_issue8():
     out, _, _, _ = find_outliers(x, ['k', 5], k, l_t, g_t, ['value', 1], 1)
 
     assert out[150] == True, "Outlier at index 150 was missed. NaN propagation likely broke the 'k' thresholding."
+
+def test_find_outliers_log_transform_nan_issue9():
+    """
+    Test that find_outliers correctly applies the log-transform (for positive/skewed data)
+    even if the series contains NaNs.
+    Previously, np.min() returned NaN, causing the log-transform to be skipped,
+    which triggered spurious outliers when evaluated on the raw scale (Issue 9).
+    """
+    from pycissa.preprocessing.gap_fill.gap_filling import find_outliers, initialise_outlier_type
+    import numpy as np
+
+    np.random.seed(42)
+    x_clean = np.random.lognormal(mean=1.0, sigma=0.3, size=300)
+    x_clean[220] = 40.0
+    k, l_t, g_t = initialise_outlier_type(['k', 5])
+
+    out_clean, _, _, _ = find_outliers(x_clean.copy(), ['k', 5], k, l_t, g_t, ['value', 1], 1)
+
+    x_withnan = x_clean.copy()
+    x_withnan[15] = np.nan
+    out_nan, _, _, _ = find_outliers(x_withnan, ['k', 5], k, l_t, g_t, ['value', 1], 1)
+
+    # We expect out_nan to have the same number of flagged elements as out_clean,
+    # plus 1 for the NaN index itself.
+    assert np.sum(out_nan) == np.sum(out_clean) + 1, "Log-transform was skipped; spurious outliers detected due to NaN."

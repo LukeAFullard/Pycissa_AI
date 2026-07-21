@@ -345,7 +345,7 @@ def find_outliers(x_new:                np.ndarray,
     if outliers[0] == 'k':
         Theta, ini = initialise_filter(data_per_unit_period) # we will add this when/if we need it
         # % Serial Filtering
-        if np.min(x_new)>0:
+        if np.nanmin(x_new)>0:
             lx = np.log(x_new)
         else:
             lx = x_new.copy()
