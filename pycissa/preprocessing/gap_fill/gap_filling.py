@@ -351,8 +351,12 @@ def find_outliers(x_new:                np.ndarray,
             lx = x_new.copy()
 
         dlx = lfilter(Theta,1,lx.reshape(1,len(lx)))
-        se = stats.median_abs_deviation(dlx[0,ini-1:])
-        me = np.median(dlx[0,ini-1:]);
+        se = stats.median_abs_deviation(dlx[0,ini-1:], nan_policy='omit')
+        me = np.nanmedian(dlx[0,ini-1:]);
+
+        if np.isnan(se):
+            warnings.warn("Warning: Outlier computation window is entirely NaNs. Local detection may fail.")
+
         y = np.append(me*np.ones((ini-1,1)), dlx[0,ini-1:])
         out = np.abs(y-me)>k*se
     elif outliers[0] == '<':
