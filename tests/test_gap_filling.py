@@ -152,3 +152,23 @@ def test_m_fill_timeseries_gaps_monte_carlo():
         # Depending on noise/seed it might not converge in 2 iterations, which is fine,
         # we just want to ensure the MC logic executes without crashing from shape errors.
         pass
+
+def test_find_outliers_with_nans_issue8():
+    """
+    Test that find_outliers with the 'k' method correctly identifies outliers
+    even if the time series contains NaNs elsewhere.
+    Previously, stats.median_abs_deviation and np.median would propagate NaNs,
+    causing NO outliers to be detected in the entire array (Issue 8).
+    """
+    from pycissa.preprocessing.gap_fill.gap_filling import find_outliers, initialise_outlier_type
+    import numpy as np
+
+    # Generate a clean series and inject a NaN and a massive outlier
+    x = np.abs(np.sin(np.arange(200) / 10.0)) + 1.0 + 0.05 * np.random.randn(200)
+    x[50] = np.nan
+    x[150] = 20.0  # Clear outlier
+
+    k, l_t, g_t = initialise_outlier_type(['k', 5])
+    out, _, _, _ = find_outliers(x, ['k', 5], k, l_t, g_t, ['value', 1], 1)
+
+    assert out[150] == True, "Outlier at index 150 was missed. NaN propagation likely broke the 'k' thresholding."
