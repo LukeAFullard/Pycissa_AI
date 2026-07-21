@@ -154,3 +154,45 @@ def test_m_fill_uneven_timeseries_monte_carlo():
 
     assert res['best_L'] == 5
     assert res['r2'] > 0.0
+def test_fill_uneven_timeseries_Z_back_interp_consistency():
+    """
+    Test that Z_back_interp matches the back-interpolated x for the best_L found,
+    preventing the bug where Z_back_interp tracked the last evaluated L in the loop
+    instead of best_L. (Issue 6)
+    """
+    from pycissa.preprocessing.gap_fill.uneven_gap_filling import fill_uneven_timeseries
+    import numpy as np
+
+    t = np.arange(0, 300, 1.0)
+    x = np.sin(2*np.pi*t/24) + 0.03*np.random.randn(300)
+    x[100:110] = np.nan
+
+    res = fill_uneven_timeseries(t, x, L_values=[24, 13], dt=1.0, gap_threshold=2.0, plot=False)
+
+    assert res['best_L'] == 24, "Expected L=24 to be the best fit."
+    mismatch = np.nanmax(np.abs(np.sum(res['Z_back_interp'], axis=1) - res['x_back_interp']))
+    assert mismatch < 1e-10, f"Z_back_interp is inconsistent with x_back_interp. Mismatch: {mismatch}"
+
+def test_m_fill_uneven_timeseries_misaligned_gaps():
+    """
+    Test that multivariate gap filling successfully detects gaps when they are
+    misaligned across channels. Previously, a gap would only trigger if ALL channels
+    were missing data at a specific timestamp. (Issue 7)
+    """
+    from pycissa.preprocessing.gap_fill.uneven_gap_filling import m_fill_uneven_timeseries
+    import numpy as np
+
+    t = np.arange(0, 300, 1.0)
+    x1 = np.sin(2*np.pi*t/24) + 0.05*np.random.randn(300)
+    x2 = np.cos(2*np.pi*t/24) + 0.05*np.random.randn(300)
+    x = np.column_stack([x1, x2])
+
+    # Only channel 0 is missing; channel 1 stays valid
+    x[100:130, 0] = np.nan
+
+    # We do NOT expect a warning about "No gaps found" because channel 0 has a gap.
+    # Therefore, we expect x_even_with_gaps to contain NaNs for channel 0 at those indices.
+    res = m_fill_uneven_timeseries(t, x, L_values=[24], dt=1.0, gap_threshold=2.0, plot=False)
+
+    has_gaps_in_interp = np.any(np.isnan(res['x_even_with_gaps']))
+    assert has_gaps_in_interp, "Gap was not correctly identified and masked with NaNs before spectral filling."
